@@ -78,18 +78,7 @@ log "starting worker (log: .local/worker.log)"
 PIDS+=($!)
 sleep 2
 
-# ---- create job --------------------------------------------------------------
-BODY=$(cat <<JSON
-{
-  "prompt": "$PROMPT",
-  "characters": [{"name": "Mara", "description": "60s, weathered, kind eyes, yellow raincoat"}],
-  "options": {
-    "style": "cinematic_realism", "aspectRatio": "$ASPECT", "targetDurationSec": $DURATION,
-    "language": "en", "mode": "auto", "videoTier": "standard", "subtitles": {"burnIn": true}
-  }
-}
-JSON
-)
+# ---- create and follow one job -------------------------------------------------
 if [ "${DEV_AUTH:-true}" = "true" ]; then
   # Local runs use the fixed dev workspace; keep it funded through the support endpoint.
   TOPUP=$(curl -s -X POST "$API_URL/internal/workspaces/${DEV_WORKSPACE_ID:-00000000-0000-0000-0000-000000000001}/credits/adjust" \
@@ -97,27 +86,5 @@ if [ "${DEV_AUTH:-true}" = "true" ]; then
     -d '{"amount": 200, "note": "demo top-up", "actor": "scripts/demo.sh"}')
   log "dev workspace credits: $(printf '%s' "$TOPUP" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("balance"))')"
 fi
-log "cost preview: $(curl -sf -X POST "$API_URL/v1/jobs/estimate" -H 'content-type: application/json' -d "$BODY")"
-JOB=$(curl -s -X POST "$API_URL/v1/jobs" -H 'content-type: application/json' -d "$BODY")
-JOB_ID=$(printf '%s' "$JOB" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("id",""))')
-if [ -z "$JOB_ID" ]; then
-  echo "job creation failed: $JOB" >&2
-  exit 1
-fi
-log "created job $JOB_ID"
-
-# ---- follow progress ---------------------------------------------------------
-log "streaming progress (SSE)"
-curl -sN "$API_URL/v1/jobs/$JOB_ID/events" | python3 -u scripts/follow-events.py
-
-# ---- verify ------------------------------------------------------------------
-DL=$(curl -sf "$API_URL/v1/jobs/$JOB_ID/download")
-MP4_URL=$(printf '%s' "$DL" | python3 -c 'import sys,json; print(json.load(sys.stdin)["mp4"]["url"])')
-OUT=".local/demo-$JOB_ID.mp4"
-curl -sf -o "$OUT" "$MP4_URL"
-log "downloaded $OUT via signed URL"
-if command -v ffprobe >/dev/null 2>&1; then
-  ffprobe -v error -show_entries format=duration:stream=codec_type,width,height,avg_frame_rate -of compact=p=0 "$OUT" | sed 's/^/      /'
-fi
-log "job JSON: $API_URL/v1/jobs/$JOB_ID"
+API_URL="$API_URL" SMOKE_DURATION="$DURATION" SMOKE_PROMPT="$PROMPT" SMOKE_ASPECT="$ASPECT" bash scripts/smoke.sh
 log "done"

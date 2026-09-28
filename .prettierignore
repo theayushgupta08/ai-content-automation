@@ -7,3 +7,4 @@ pnpm-lock.yaml
 .venv
 media
 .local
+deploy/helm/avg/templates

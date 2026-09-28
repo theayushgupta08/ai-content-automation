@@ -1,14 +1,16 @@
 # Python pipeline worker with FFmpeg. Build from the repo root:
 #   docker build -f docker/worker.Dockerfile -t avg-worker .
-FROM python:3.12-slim-bookworm AS base
+# Ubuntu 24.04 ships FFmpeg 6.1 and Python 3.12, the exact versions CI runs the test suite on.
+FROM ubuntu:24.04
 
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
+  UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PYTHON=/usr/bin/python3
 
 RUN apt-get update -qq \
-  && apt-get install -y -qq --no-install-recommends ffmpeg fonts-dejavu-core ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
-
-COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /usr/local/bin/uv
+  && apt-get install -y -qq --no-install-recommends \
+    python3 python3-pip ffmpeg fonts-dejavu-core ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && pip3 install --no-cache-dir --break-system-packages "uv>=0.8,<0.9"
 
 WORKDIR /app/workers
 COPY workers/pyproject.toml workers/uv.lock* ./

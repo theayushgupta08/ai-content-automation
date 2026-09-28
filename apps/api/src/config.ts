@@ -29,6 +29,10 @@ export const appConfig = {
     address: env('TEMPORAL_ADDRESS', 'localhost:7233'),
     namespace: env('TEMPORAL_NAMESPACE', 'default'),
     taskQueue: env('TEMPORAL_TASK_QUEUE', 'video-jobs'),
+    // Temporal Cloud: set TEMPORAL_API_KEY (TLS is implied). TEMPORAL_TLS=true alone enables
+    // TLS with the system trust store for a self-hosted server behind a TLS proxy.
+    apiKey: process.env.TEMPORAL_API_KEY || undefined,
+    tls: env('TEMPORAL_TLS', 'false') === 'true' || Boolean(process.env.TEMPORAL_API_KEY),
   },
   internalToken: env('INTERNAL_API_TOKEN', 'dev-internal-token'),
   auth: {

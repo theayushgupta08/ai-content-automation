@@ -64,6 +64,12 @@ async def connect(settings: Settings) -> Client:
         settings.temporal_address,
         namespace=settings.temporal_namespace,
         data_converter=pydantic_data_converter,
+        tls=settings.temporal_tls,
+        api_key=settings.temporal_api_key or None,
+        # Temporal Cloud routes API-key requests by this header.
+        rpc_metadata=(
+            {"temporal-namespace": settings.temporal_namespace} if settings.temporal_api_key else {}
+        ),
     )
 
 

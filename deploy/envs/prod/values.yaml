@@ -1,0 +1,66 @@
+# Production on EKS. Promoted by tagging a release (vX.Y.Z); the release workflow sets
+# global.imageTag to the tag. Sizes follow docs/06-infrastructure-and-scaling.md.
+global:
+  env: prod
+  imageRegistry: ghcr.io/theayushgupta08
+  imageTag: v0.1.0
+
+config:
+  apiUrl: https://api.example.com
+  webUrl: https://app.example.com
+  temporal:
+    address: avg-prod.a1b2c.tmprl.cloud:7233
+    namespace: avg-prod.a1b2c
+  media:
+    bucket: avg-prod-media
+    region: us-east-1
+  providers:
+    mode: live
+
+externalSecrets:
+  enabled: true
+  secretStoreRef: { name: aws-secrets-manager, kind: ClusterSecretStore }
+  remoteKey: avg/prod/app
+
+api:
+  autoscaling: { minReplicas: 3, maxReplicas: 20 }
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { cpu: '2', memory: 2Gi }
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/avg-prod-api
+
+web:
+  autoscaling: { minReplicas: 3, maxReplicas: 10 }
+
+worker:
+  keda:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 40
+    targetQueueSize: 5
+  resources:
+    requests: { cpu: '2', memory: 4Gi }
+    limits: { cpu: '4', memory: 8Gi }
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/avg-prod-worker
+  nodeSelector:
+    avg.io/pool: workers
+  pdb: { minAvailable: 2 }
+
+ingress:
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: 'off'
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
+    nginx.ingress.kubernetes.io/proxy-body-size: 1m
+    cert-manager.io/cluster-issuer: letsencrypt
+  api: { host: api.example.com }
+  web: { host: app.example.com }
+
+metrics:
+  serviceMonitor:
+    enabled: true
+    labels: { release: kube-prometheus-stack }

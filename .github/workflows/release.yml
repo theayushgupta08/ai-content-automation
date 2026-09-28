@@ -1,0 +1,139 @@
+name: Release images
+
+# Builds and pushes the api, worker and web images to GHCR, then bumps the image tag in the
+# environment values so ArgoCD rolls it out: every push to main updates staging; a vX.Y.Z tag
+# updates the prod values (synced by hand in ArgoCD).
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ${{ github.repository_owner }}
+
+jobs:
+  meta:
+    name: Resolve tags
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      env: ${{ steps.tag.outputs.env }}
+    steps:
+      - id: tag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            echo "env=prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=sha-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+            echo "env=staging" >> "$GITHUB_OUTPUT"
+          fi
+
+  images:
+    name: ${{ matrix.image }}
+    needs: meta
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: avg-api
+            dockerfile: docker/api.Dockerfile
+          - image: avg-worker
+            dockerfile: docker/worker.Dockerfile
+          # NEXT_PUBLIC_* is inlined at build time, so the dashboard is built per environment.
+          - image: avg-web-staging
+            dockerfile: docker/web.Dockerfile
+            api_url_var: STAGING_API_URL
+            clerk_var: STAGING_CLERK_PUBLISHABLE_KEY
+          - image: avg-web-prod
+            dockerfile: docker/web.Dockerfile
+            api_url_var: PROD_API_URL
+            clerk_var: PROD_CLERK_PUBLISHABLE_KEY
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build args
+        id: args
+        env:
+          API_URL: ${{ matrix.api_url_var && vars[matrix.api_url_var] || '' }}
+          CLERK_KEY: ${{ matrix.clerk_var && vars[matrix.clerk_var] || '' }}
+        run: |
+          {
+            echo "args<<EOF"
+            [ -n "$API_URL" ] && echo "NEXT_PUBLIC_API_URL=$API_URL"
+            [ -n "$CLERK_KEY" ] && echo "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$CLERK_KEY"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          provenance: true
+          sbom: true
+          build-args: ${{ steps.args.outputs.args }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.image }}:${{ needs.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.image }}:${{ needs.meta.outputs.env == 'prod' && 'latest' || 'main' }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+      - name: Scan image
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.image }}:${{ needs.meta.outputs.tag }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '0'
+
+  promote:
+    name: Bump ${{ needs.meta.outputs.env }} image tag
+    needs: [meta, images]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Update values
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
+          ENV: ${{ needs.meta.outputs.env }}
+        run: |
+          python3 - <<'PY'
+          import os, re, pathlib
+          env, tag = os.environ["ENV"], os.environ["TAG"]
+          p = pathlib.Path(f"deploy/envs/{env}/values.yaml")
+          s = p.read_text()
+          s, n = re.subn(r"^(  imageTag: ).*$", rf"\g<1>{tag}", s, count=1, flags=re.M)
+          assert n == 1, "global.imageTag not found"
+          p.write_text(s)
+          PY
+          git diff --stat
+      - name: Commit
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
+          ENV: ${{ needs.meta.outputs.env }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deploy/envs/$ENV/values.yaml
+          git diff --cached --quiet && { echo "nothing to promote"; exit 0; }
+          git commit -m "deploy($ENV): image tag $TAG [skip ci]"
+          git push origin HEAD:main

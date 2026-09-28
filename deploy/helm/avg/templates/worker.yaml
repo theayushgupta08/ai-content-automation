@@ -1,0 +1,160 @@
+{{- if .Values.worker.enabled }}
+{{- $labels := include "avg.selectorLabels" (dict "root" . "component" "worker") }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "avg.fullname" . }}-worker
+  labels:
+    {{- include "avg.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  {{- if not .Values.worker.keda.enabled }}
+  replicas: {{ .Values.worker.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+      maxSurge: 25%
+  selector:
+    matchLabels:
+      {{- $labels | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- $labels | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.worker.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "avg.workerServiceAccount" . }}
+      {{- include "avg.imagePullSecrets" . | nindent 6 }}
+      # Let in-flight activities finish; Temporal retries whatever is cut off.
+      terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
+      securityContext:
+        fsGroup: 10001
+      containers:
+        - name: worker
+          image: {{ include "avg.image" (dict "root" . "image" .Values.worker.image) }}
+          imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+          args: ["--all"]
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.worker.metricsPort }}
+          {{- include "avg.envFrom" . | nindent 10 }}
+          env:
+            # Workers call the api over the cluster network, not through the ingress.
+            - name: API_URL
+              value: {{ printf "http://%s-api" (include "avg.fullname" .) | quote }}
+            {{- include "avg.extraEnv" .Values.worker.env | nindent 12 }}
+          livenessProbe:
+            httpGet: { path: /metrics, port: metrics }
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /metrics, port: metrics }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          securityContext:
+            {{- include "avg.securityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: cache
+              mountPath: {{ .Values.worker.cache.dir }}
+      volumes:
+        - name: cache
+          emptyDir:
+            sizeLimit: {{ .Values.worker.cache.sizeLimit }}
+      {{- with .Values.worker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "avg.fullname" . }}-worker
+  labels:
+    {{- include "avg.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    {{- $labels | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.worker.metricsPort }}
+      targetPort: metrics
+{{- if .Values.worker.keda.enabled }}
+---
+# Scales on Temporal task-queue backlog. Requires KEDA >= 2.16 (temporal scaler).
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "avg.fullname" . }}-temporal
+  labels:
+    {{- include "avg.labels" . | nindent 4 }}
+spec:
+  secretTargetRef:
+    - parameter: apiKey
+      name: {{ include "avg.secretName" . }}
+      key: TEMPORAL_API_KEY
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "avg.fullname" . }}-worker
+  labels:
+    {{- include "avg.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  scaleTargetRef:
+    name: {{ include "avg.fullname" . }}-worker
+  minReplicaCount: {{ .Values.worker.keda.minReplicas }}
+  maxReplicaCount: {{ .Values.worker.keda.maxReplicas }}
+  pollingInterval: {{ .Values.worker.keda.pollingInterval }}
+  cooldownPeriod: {{ .Values.worker.keda.cooldownPeriod }}
+  triggers:
+    - type: temporal
+      metadata:
+        endpoint: {{ .Values.config.temporal.address | quote }}
+        namespace: {{ .Values.config.temporal.namespace | quote }}
+        taskQueue: {{ .Values.config.temporal.taskQueue | quote }}
+        queueTypes: workflow,activity
+        targetQueueSize: {{ .Values.worker.keda.targetQueueSize | quote }}
+        activationTargetQueueSize: "0"
+        {{- if eq (toString .Values.config.temporal.tls) "true" }}
+        tls: enable
+        {{- end }}
+      authenticationRef:
+        name: {{ include "avg.fullname" . }}-temporal
+{{- end }}
+{{- if .Values.worker.pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "avg.fullname" . }}-worker
+  labels:
+    {{- include "avg.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  minAvailable: {{ .Values.worker.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- $labels | nindent 6 }}
+{{- end }}
+{{- end }}

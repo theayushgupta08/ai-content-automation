@@ -1,0 +1,8 @@
+apiVersion: v2
+name: avg
+description: AI Video Generator control plane (api), dashboard (web) and pipeline workers.
+type: application
+version: 0.1.0
+appVersion: '0.1.0'
+kubeVersion: '>=1.27.0-0'
+keywords: [temporal, ffmpeg, video]

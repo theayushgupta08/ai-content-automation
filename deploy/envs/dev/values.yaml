@@ -1,0 +1,59 @@
+# Local or shared dev cluster: mock providers, in-cluster dependencies from
+# deploy/envs/dev/deps.yaml, no ingress, Secret rendered from values.
+global:
+  env: dev
+  imageRegistry: ghcr.io/theayushgupta08
+  imageTag: main
+
+config:
+  apiUrl: http://localhost:4000
+  webUrl: http://localhost:3000
+  temporal:
+    address: temporal:7233
+    namespace: default
+  media:
+    bucket: avg-media
+    endpoint: http://minio:9000
+    publicEndpoint: http://localhost:9000
+  providers:
+    mode: mock
+  extraEnv:
+    RENDER_SCALE: '0.5'
+
+secrets:
+  create: true
+  values:
+    DATABASE_URL: postgresql://avg:avg@postgres:5432/avg
+    REDIS_URL: redis://redis:6379
+    INTERNAL_API_TOKEN: dev-internal-token-dev-internal-token-00
+    MEDIA_SIGNING_SECRET: dev-media-signing-secret-dev-media-00000
+    S3_ACCESS_KEY: minio
+    S3_SECRET_KEY: minio12345
+
+api:
+  replicas: 1
+  autoscaling: { enabled: false }
+  pdb: { enabled: false }
+  # config.validate.ts refuses production mode with dev credentials and http URLs.
+  env:
+    NODE_ENV: development
+    DEV_AUTH: 'true'
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: '1', memory: 1Gi }
+
+web:
+  replicas: 1
+  autoscaling: { enabled: false }
+  pdb: { enabled: false }
+
+worker:
+  replicas: 1
+  pdb: { enabled: false }
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { cpu: '2', memory: 4Gi }
+  cache: { sizeLimit: 5Gi }
+
+ingress:
+  enabled: false

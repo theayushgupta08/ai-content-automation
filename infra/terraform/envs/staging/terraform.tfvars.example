@@ -1,0 +1,6 @@
+region = "us-east-1"
+domain = "staging.example.com"
+
+# Restrict once the cluster is bootstrapped.
+kubernetes_api_allowed_cidrs = ["0.0.0.0/0"]
+worker_max_nodes             = 10

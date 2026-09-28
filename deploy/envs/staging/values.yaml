@@ -1,0 +1,65 @@
+# Staging on EKS (infra/terraform/envs/staging): mirrors prod routing on live providers with a
+# capped budget. Image tags are bumped by the release workflow on every push to main.
+global:
+  env: staging
+  imageRegistry: ghcr.io/theayushgupta08
+  imageTag: main
+
+config:
+  apiUrl: https://api.staging.example.com
+  webUrl: https://app.staging.example.com
+  temporal:
+    # Temporal Cloud namespace; TEMPORAL_API_KEY comes from the secret.
+    address: avg-staging.a1b2c.tmprl.cloud:7233
+    namespace: avg-staging.a1b2c
+  media:
+    bucket: avg-staging-media
+    region: us-east-1
+  providers:
+    mode: live
+    settings:
+      ANTHROPIC_EFFORT: medium
+      VIDEO_CHAIN_STANDARD: fal-ai/kling-video/v2.1/standard/image-to-video,fal-ai/wan-i2v
+
+# Secret synced from AWS Secrets Manager (infra/terraform module "secrets" creates the
+# placeholder; fill the values in the console or with `aws secretsmanager put-secret-value`).
+externalSecrets:
+  enabled: true
+  secretStoreRef: { name: aws-secrets-manager, kind: ClusterSecretStore }
+  remoteKey: avg/staging/app
+
+api:
+  autoscaling: { minReplicas: 2, maxReplicas: 6 }
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/avg-staging-api
+
+web:
+  autoscaling: { minReplicas: 2, maxReplicas: 4 }
+
+worker:
+  keda:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetQueueSize: 5
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/avg-staging-worker
+  nodeSelector:
+    avg.io/pool: workers
+
+ingress:
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: 'off'
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
+    nginx.ingress.kubernetes.io/proxy-body-size: 1m
+    cert-manager.io/cluster-issuer: letsencrypt
+  api: { host: api.staging.example.com }
+  web: { host: app.staging.example.com }
+
+metrics:
+  serviceMonitor:
+    enabled: true
+    labels: { release: kube-prometheus-stack }

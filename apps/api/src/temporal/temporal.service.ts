@@ -19,12 +19,18 @@ export class TemporalService implements OnModuleInit, OnModuleDestroy {
   private client?: Client;
 
   async onModuleInit(): Promise<void> {
-    this.connection = await Connection.connect({ address: appConfig.temporal.address });
-    this.client = new Client({
-      connection: this.connection,
-      namespace: appConfig.temporal.namespace,
+    const { address, namespace, apiKey, tls } = appConfig.temporal;
+    this.connection = await Connection.connect({
+      address,
+      tls: tls ? true : undefined,
+      apiKey,
+      // Temporal Cloud routes API-key requests by this header.
+      metadata: apiKey ? { 'temporal-namespace': namespace } : undefined,
     });
-    this.logger.log(`connected to Temporal at ${appConfig.temporal.address}`);
+    this.client = new Client({ connection: this.connection, namespace });
+    this.logger.log(
+      `connected to Temporal at ${address} (namespace=${namespace}, tls=${tls}, auth=${apiKey ? 'api-key' : 'none'})`,
+    );
   }
 
   async onModuleDestroy(): Promise<void> {

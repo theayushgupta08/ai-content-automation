@@ -12,7 +12,8 @@ COPY apps/api apps/api
 RUN pnpm --filter @avg/contracts build \
   && pnpm --filter @avg/api prisma:generate \
   && pnpm --filter @avg/api build \
-  && pnpm --filter @avg/api... deploy --prod /out
+  && pnpm --filter @avg/api deploy --legacy --prod /out \
+  && cd /out && node node_modules/prisma/build/index.js generate
 
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production
@@ -25,4 +26,6 @@ COPY --from=build /repo/apps/api/prisma ./prisma
 RUN useradd --create-home --uid 10001 api && chown -R api:api /app
 USER api
 EXPOSE 4000
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+# Migrations run separately before a rollout (deploy/helm/avg/templates/migrate-job.yaml):
+#   node node_modules/prisma/build/index.js migrate deploy
+CMD ["node", "dist/main.js"]

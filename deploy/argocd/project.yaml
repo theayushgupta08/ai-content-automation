@@ -1,0 +1,17 @@
+# ArgoCD AppProject for every avg environment. Apply once to the argocd namespace.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: avg
+  namespace: argocd
+spec:
+  description: AI Video Generator
+  sourceRepos:
+    - https://github.com/theayushgupta08/ai-content-automation.git
+  destinations:
+    - namespace: avg-*
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'

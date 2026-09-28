@@ -36,6 +36,10 @@ webhooks for subscriptions and credit packs, trial credits for every new workspa
 plan & credits page in the dashboard. Without `STRIPE_SECRET_KEY` the ledger and trial still
 work and checkout is disabled.
 
+Phase 1.5 hardening is in: S3 media storage, production config guardrails, Prometheus metrics
+and cost roll-ups, a k6 load test, and the deployment layer described under
+[Deploying](#deploying) below.
+
 ## Quickstart
 
 Prerequisites: Node 22 + pnpm 10, Python 3.11+ + [uv](https://docs.astral.sh/uv/), ffmpeg,
@@ -68,11 +72,25 @@ script, character sheets, keyframes and clips land. Without Clerk keys the API r
 | `workers`            | Python Temporal workers: `VideoJobWorkflow` + `SceneWorkflow`, activities for every stage, provider adapters (mock), FFmpeg timeline renderer  |
 | `packages/contracts` | Canonical JSON Schemas for job input, script, scene plan, timeline and events; generated TypeScript types + Ajv validators and Pydantic models |
 | `docker/`            | Dockerfiles for api, web and worker                                                                                                            |
-| `scripts/demo.sh`    | The end-to-end demo used by `make demo` and CI                                                                                                 |
-| `docs/`              | The production platform plan (below)                                                                                                           |
+| `deploy/`            | Helm chart (`deploy/helm/avg`), per-environment values (`deploy/envs`), ArgoCD applications (`deploy/argocd`)                                  |
+| `infra/terraform`    | AWS modules (network, eks, rds, redis, s3, iam, secrets) and the `envs/staging` root; `bootstrap.sh` installs cluster add-ons                  |
+| `scripts/demo.sh`    | The end-to-end demo used by `make demo` and CI; `scripts/smoke.sh` runs one job against any environment                                        |
+| `docs/`              | The production platform plan (below) and runbooks                                                                                              |
 
 Useful commands: `make test`, `make lint`, `make typecheck`, `pnpm gen:contracts` (after
 editing a schema; CI fails if generated files are stale).
+
+## Deploying
+
+Each environment is one Helm release (`deploy/helm/avg`: api, web, workers, a migration
+hook, ingress, secrets from a secret manager, KEDA scaling on Temporal backlog) synced by
+ArgoCD from `deploy/envs/<env>/values.yaml`. `.github/workflows/release.yml` builds the
+images to GHCR on every push to main and bumps the staging image tag; a `vX.Y.Z` tag bumps
+prod for a manual sync. The AWS side (EKS, RDS, ElastiCache, S3, IAM, Secrets Manager) is
+Terraform under `infra/terraform`.
+
+Step by step: [docs/runbooks/staging-bring-up.md](docs/runbooks/staging-bring-up.md).
+Validate manifests locally with `make deploy-lint`; build the images with `make images`.
 
 ## Production platform plan
 

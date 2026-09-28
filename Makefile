@@ -1,4 +1,4 @@
-.PHONY: help setup up down dev demo test lint typecheck gen-contracts clean
+.PHONY: help setup up down dev demo smoke loadtest test lint typecheck gen-contracts deploy-lint images clean
 
 help:
 	@echo "Targets:"
@@ -7,7 +7,10 @@ help:
 	@echo "  migrate        apply Prisma migrations to DATABASE_URL"
 	@echo "  dev            run api, web and workers with hot reload (requires 'make up')"
 	@echo "  demo           run one job end to end against mock providers and print the MP4 path"
+	@echo "  smoke          create one job against API_URL and download the MP4 (TOKEN for Clerk envs)"
 	@echo "  loadtest       run the k6 API load test against API_URL (default localhost:4000)"
+	@echo "  deploy-lint    lint the Helm chart, validate rendered manifests, check terraform formatting"
+	@echo "  images         build the api, worker and web container images locally"
 	@echo "  test           run all test suites"
 	@echo "  lint           lint TypeScript and Python"
 	@echo "  typecheck      typecheck TypeScript and Python"
@@ -37,8 +40,26 @@ dev:
 demo:
 	bash scripts/demo.sh
 
+smoke:
+	bash scripts/smoke.sh
+
 loadtest:
 	k6 run scripts/load/api-smoke.js
+
+deploy-lint:
+	helm lint deploy/helm/avg
+	for env in dev staging prod; do \
+	  helm template avg deploy/helm/avg --kube-version 1.31.0 -f deploy/envs/$$env/values.yaml > .local/rendered-$$env.yaml || exit 1; \
+	done
+	kubeconform -strict -summary -schema-location default \
+	  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+	  .local/rendered-*.yaml deploy/envs/dev/deps.yaml deploy/argocd/*.yaml
+	tofu fmt -recursive -check infra/terraform
+
+images:
+	docker build -f docker/api.Dockerfile -t avg-api:local .
+	docker build -f docker/worker.Dockerfile -t avg-worker:local .
+	docker build -f docker/web.Dockerfile -t avg-web:local --build-arg NEXT_PUBLIC_API_URL=http://localhost:4000 .
 
 test:
 	pnpm test

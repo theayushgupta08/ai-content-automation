@@ -1,0 +1,30 @@
+{{- if .Values.metrics.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "avg.fullname" . }}
+  labels:
+    {{- include "avg.labels" . | nindent 4 }}
+    {{- with .Values.metrics.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "avg.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  endpoints:
+    # api: /metrics (bearer token when METRICS_TOKEN is set)
+    - port: http
+      path: /metrics
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+      authorization:
+        credentials:
+          name: {{ include "avg.secretName" . }}
+          key: METRICS_TOKEN
+          optional: true
+    # workers: Temporal SDK metrics
+    - port: metrics
+      path: /metrics
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+{{- end }}

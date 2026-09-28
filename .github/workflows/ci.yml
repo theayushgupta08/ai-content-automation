@@ -58,6 +58,22 @@ jobs:
       - run: cd workers && uv run mypy avg_workers
       - run: cd workers && uv run pytest -q
 
+  deploy:
+    name: Deploy manifests (helm, kubeconform, terraform fmt)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.8.8
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | sudo tar -xz -C /usr/local/bin kubeconform
+      - run: make deploy-lint
+
   e2e:
     name: End-to-end demo (mock providers)
     runs-on: ubuntu-latest

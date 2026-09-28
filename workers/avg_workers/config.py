@@ -29,6 +29,14 @@ class Settings:
     )
     temporal_namespace: str = field(default_factory=lambda: _env("TEMPORAL_NAMESPACE", "default"))
     task_queue: str = field(default_factory=lambda: _env("TEMPORAL_TASK_QUEUE", "video-jobs"))
+    # Temporal Cloud: an API key implies TLS. TEMPORAL_TLS=true alone enables TLS with the
+    # system trust store (self-hosted server behind a TLS proxy).
+    temporal_api_key: str = field(default_factory=lambda: _env("TEMPORAL_API_KEY", ""))
+    temporal_tls: bool = field(
+        default_factory=lambda: (
+            _env("TEMPORAL_TLS", "false").lower() == "true" or bool(_env("TEMPORAL_API_KEY", ""))
+        )
+    )
 
     api_url: str = field(default_factory=lambda: _env("API_URL", "http://localhost:4000"))
     internal_api_token: str = field(

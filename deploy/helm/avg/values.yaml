@@ -1,0 +1,195 @@
+# Default values for the avg chart. Per-environment overrides live in deploy/envs/<env>/values.yaml.
+# Every environment needs, at minimum: image tags, config.apiUrl/webUrl, the Temporal target,
+# the media bucket, and a Secret with the keys listed under `secrets`.
+
+global:
+  # Short environment name; becomes the `avg.io/env` label and the CORS default.
+  env: dev
+  imageRegistry: ghcr.io/theayushgupta08
+  imagePullSecrets: []
+  # Set every workload's image tag at once (a git sha from the release workflow). Component
+  # `image.tag` values override it.
+  imageTag: ''
+
+nameOverride: ''
+fullnameOverride: ''
+
+# Non-secret settings shared by the api and the workers (rendered into one ConfigMap).
+config:
+  # Public URLs. The api also uses apiUrl in signed media links and Stripe return URLs.
+  apiUrl: https://api.example.com
+  webUrl: https://app.example.com
+  # Comma-separated browser origins allowed to call the api. Defaults to webUrl.
+  corsOrigins: ''
+  temporal:
+    # Temporal Cloud: <ns>.<acct>.tmprl.cloud:7233 with namespace <ns>.<acct> and
+    # TEMPORAL_API_KEY in the secret. Self-hosted: temporal-frontend.temporal:7233.
+    address: temporal:7233
+    namespace: default
+    taskQueue: video-jobs
+    # "true" enables TLS without an API key (self-hosted behind a TLS proxy).
+    tls: 'false'
+  media:
+    bucket: avg-media
+    region: us-east-1
+    # S3-compatible endpoint for MinIO / R2; blank means AWS S3 with IRSA credentials.
+    endpoint: ''
+    # Host browsers can reach when `endpoint` is cluster-internal (dev only).
+    publicEndpoint: ''
+    urlTtlSec: '86400'
+  providers:
+    # mock | live. Live needs ANTHROPIC_API_KEY, FAL_KEY and ELEVENLABS_API_KEY in the secret.
+    mode: mock
+    # Optional per-capability pins (PROVIDER_LLM=anthropic, PROVIDER_VIDEO=mock, ...) and
+    # model settings (ANTHROPIC_STORY_MODEL, VIDEO_CHAIN_STANDARD, ...).
+    settings: {}
+  # Free-form extra environment for every workload.
+  extraEnv: {}
+
+# Credentials. All workloads read the same Secret through envFrom. Keys:
+#   required:  DATABASE_URL, REDIS_URL, INTERNAL_API_TOKEN, MEDIA_SIGNING_SECRET
+#   api:       CLERK_SECRET_KEY, METRICS_TOKEN, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
+#              STRIPE_PRICE_{STARTER,CREATOR,PRO,STUDIO}_{MONTH,YEAR}, STRIPE_PRICE_PACK_500
+#   workers:   ANTHROPIC_API_KEY, FAL_KEY, ELEVENLABS_API_KEY
+#   both:      TEMPORAL_API_KEY, S3_ACCESS_KEY + S3_SECRET_KEY (omit on EKS with IRSA)
+secrets:
+  # Name of an existing Secret (for example one written by the ExternalSecret below).
+  # Defaults to "<release>-app".
+  existingSecret: ''
+  # Dev clusters only: render the Secret from these values. Never commit real credentials.
+  create: false
+  values: {}
+
+# Sync the Secret from a secret manager with the External Secrets Operator. The remote
+# secret is one JSON document whose keys are the variable names above.
+externalSecrets:
+  enabled: false
+  secretStoreRef:
+    name: aws-secrets-manager
+    kind: ClusterSecretStore
+  refreshInterval: 1h
+  remoteKey: avg/staging/app
+
+api:
+  enabled: true
+  image:
+    repository: avg-api
+    tag: ''
+    pullPolicy: IfNotPresent
+  replicas: 2
+  port: 4000
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: '1', memory: 1Gi }
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    enabled: true
+    minAvailable: 1
+  serviceAccount:
+    create: true
+    # EKS: eks.amazonaws.com/role-arn: arn:aws:iam::<acct>:role/avg-staging-api
+    annotations: {}
+  env: {}
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  terminationGracePeriodSeconds: 30
+
+web:
+  enabled: true
+  image:
+    repository: avg-web
+    tag: ''
+    pullPolicy: IfNotPresent
+  replicas: 2
+  port: 3000
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    enabled: true
+    minAvailable: 1
+  env: {}
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+worker:
+  enabled: true
+  image:
+    repository: avg-worker
+    tag: ''
+    pullPolicy: IfNotPresent
+  replicas: 2
+  metricsPort: 9464
+  resources:
+    requests: { cpu: '1', memory: 2Gi }
+    limits: { cpu: '4', memory: 8Gi }
+  # Scratch space for the S3 cache and FFmpeg intermediates (emptyDir).
+  cache:
+    dir: /tmp/avg-media-cache
+    sizeLimit: 20Gi
+  # Scale on Temporal task-queue backlog with KEDA's temporal scaler (KEDA >= 2.16).
+  keda:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 40
+    targetQueueSize: 5
+    pollingInterval: 15
+    cooldownPeriod: 300
+  pdb:
+    enabled: true
+    minAvailable: 1
+  serviceAccount:
+    create: true
+    annotations: {}
+  env: {}
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  # Long enough for an in-flight render to finish; Temporal retries anything cut off.
+  terminationGracePeriodSeconds: 600
+
+# `prisma migrate deploy` as a pre-install/pre-upgrade hook (ArgoCD runs it as PreSync).
+migrations:
+  enabled: true
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+ingress:
+  enabled: true
+  className: nginx
+  # SSE streams need buffering off and a long read timeout on nginx; ALB users replace these.
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: 'off'
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
+    nginx.ingress.kubernetes.io/proxy-body-size: 1m
+  api:
+    host: api.example.com
+  web:
+    host: app.example.com
+  tls:
+    enabled: true
+    # Blank uses "<release>-tls"; pair with a cert-manager issuer annotation above.
+    secretName: ''
+
+metrics:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}

@@ -1,0 +1,17 @@
+{{ .Chart.Name }} {{ .Chart.Version }} deployed as release "{{ .Release.Name }}" ({{ .Values.global.env }}).
+
+{{- if .Values.ingress.enabled }}
+  api:  https://{{ .Values.ingress.api.host }}   (Swagger at /docs, health at /ready)
+  web:  https://{{ .Values.ingress.web.host }}
+{{- else }}
+  Ingress is disabled. Port-forward for a look:
+    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "avg.fullname" . }}-api 4000:80
+    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "avg.fullname" . }}-web 3000:80
+{{- end }}
+
+Secret in use: {{ include "avg.secretName" . }}
+{{- if .Values.secrets.create }} (rendered from values; dev only){{- end }}
+{{- if .Values.externalSecrets.enabled }} (synced from {{ .Values.externalSecrets.remoteKey }}){{- end }}
+
+Smoke test one job end to end:
+  API_URL=https://{{ .Values.ingress.api.host }} TOKEN=<clerk jwt> bash scripts/smoke.sh

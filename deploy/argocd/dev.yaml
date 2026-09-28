@@ -1,0 +1,35 @@
+# ArgoCD Application for the dev environment. Chart and values come from this repo:
+# the chart at deploy/helm/avg, the environment overrides at deploy/envs/dev/values.yaml.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: avg-dev
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: avg
+  sources:
+    - repoURL: https://github.com/theayushgupta08/ai-content-automation.git
+      targetRevision: main
+      path: deploy/helm/avg
+      helm:
+        releaseName: avg
+        valueFiles:
+          - $values/deploy/envs/dev/values.yaml
+    - repoURL: https://github.com/theayushgupta08/ai-content-automation.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: avg-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff: { duration: 30s, factor: 2, maxDuration: 5m }
