@@ -189,3 +189,15 @@ class RoutedVideoProvider:
             self.chain, self.breaker, lambda p: p.image_to_video(req, out), "video"
         )
         return result
+
+
+class RoutedMusicProvider:
+    def __init__(self, chain: list[Any], breaker: CircuitBreaker) -> None:
+        if not chain:
+            raise ValueError("music chain is empty")
+        self.chain = chain
+        self.breaker = breaker
+        self.info = ProviderInfo(name="routed", model="→".join(p.info.model for p in chain))
+
+    async def generate(self, req: Any, out: Path) -> Any:
+        return await _try_chain(self.chain, self.breaker, lambda p: p.generate(req, out), "music")

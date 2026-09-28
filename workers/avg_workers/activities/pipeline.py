@@ -420,15 +420,16 @@ class PipelineActivities:
         for n, line in enumerate(sorted(timed, key=lambda t: t.startOffsetSec)):
             key = f"{inp.ctx.prefix}/scenes/{scene.index}/line-{n}.wav"
             out = self.storage.staging_path(key)
-            res = await self.providers.speech.synthesize(
-                SpeechRequest(
-                    text=line.text,
-                    voice_id=voices.get(line.speaker, "narrator"),
-                    language=inp.language,
-                    emotion=line.emotion,
-                ),
-                out,
-            )
+            with _provider_errors("audio"):
+                res = await self.providers.speech.synthesize(
+                    SpeechRequest(
+                        text=line.text,
+                        voice_id=voices.get(line.speaker, "narrator"),
+                        language=inp.language,
+                        emotion=line.emotion,
+                    ),
+                    out,
+                )
             self.storage.commit(key, "audio/wav")
             await self._artifact(
                 inp.ctx, "dialogue", key, sceneIndex=scene.index, speaker=line.speaker
@@ -484,7 +485,15 @@ class PipelineActivities:
             out,
         )
         self.storage.commit(key, "audio/wav")
-        await self._artifact(inp.ctx, "music", key, mood=inp.plan.music.mood)
+        await self._artifact(
+            inp.ctx,
+            "music",
+            key,
+            mood=inp.plan.music.mood,
+            provider=res.provider.name,
+            model=res.provider.model,
+            costUsd=res.cost_usd,
+        )
         return MusicResult(key=key, durationSec=res.duration_sec)
 
     # ---- stage 6/7: edit and deliver -----------------------------------------------

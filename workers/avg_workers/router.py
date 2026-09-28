@@ -37,10 +37,12 @@ from avg_workers.providers.routing import (
     MemoryBreakerStore,
     RedisBreakerStore,
     RoutedImageProvider,
+    RoutedMusicProvider,
     RoutedVideoProvider,
 )
 
 if TYPE_CHECKING:
+    from avg_workers.providers.elevenlabs import ElevenLabsClient
     from avg_workers.providers.fal import FalClient
 
 log = logging.getLogger(__name__)
@@ -63,6 +65,7 @@ class ProviderFactory:
         self.settings = settings
         self.ffmpeg = ffmpeg
         self._fal: FalClient | None = None
+        self._eleven: ElevenLabsClient | None = None
         self._breaker: CircuitBreaker | None = None
 
     # ---- shared -------------------------------------------------------------------
@@ -75,6 +78,15 @@ class ProviderFactory:
                 raise ProviderConfigError("FAL_KEY is required for fal image/video providers")
             self._fal = FalClient(self.settings.fal_api_key)
         return self._fal
+
+    def eleven(self) -> ElevenLabsClient:
+        if self._eleven is None:
+            from avg_workers.providers.elevenlabs import ElevenLabsClient
+
+            if not self.settings.elevenlabs_api_key:
+                raise ProviderConfigError("ELEVENLABS_API_KEY is required for elevenlabs providers")
+            self._eleven = ElevenLabsClient(self.settings.elevenlabs_api_key)
+        return self._eleven
 
     def breaker(self) -> CircuitBreaker:
         if self._breaker is None:
@@ -159,19 +171,55 @@ class ProviderFactory:
         name = self.settings.provider_for("speech")
         if name == "mock":
             return MockSpeech()
-        raise _unsupported("speech", name, ["mock"])
+        if name == "elevenlabs":
+            from avg_workers.providers.elevenlabs import ElevenLabsSpeech, VoiceMap
+
+            return ElevenLabsSpeech(
+                self.eleven(),
+                model_id=self.settings.elevenlabs_tts_model,
+                voices=VoiceMap(self.settings.elevenlabs_voices).parse(),
+            )
+        raise _unsupported("speech", name, ["mock", "elevenlabs"])
 
     def music(self) -> MusicProvider:
         name = self.settings.provider_for("music")
         if name == "mock":
             return MockMusic()
-        raise _unsupported("music", name, ["mock"])
+        if name in ("routed", "elevenlabs", "library"):
+            members = (
+                [m.strip() for m in self.settings.music_chain.split(",") if m.strip()]
+                if name == "routed"
+                else [name]
+            )
+            chain: list[MusicProvider] = []
+            for member in members:
+                if member == "elevenlabs":
+                    from avg_workers.providers.elevenlabs import ElevenLabsMusic
+
+                    chain.append(ElevenLabsMusic(self.eleven(), self.ffmpeg))
+                elif member == "library":
+                    from avg_workers.providers.music_library import LibraryMusic
+
+                    lib = LibraryMusic(self.settings.music_library_dir, self.ffmpeg)
+                    if not lib.tracks:
+                        log.warning("music library at %s is empty", self.settings.music_library_dir)
+                    chain.append(lib)
+                elif member == "mock":
+                    chain.append(MockMusic())
+                else:
+                    raise _unsupported("music", member, ["elevenlabs", "library", "mock"])
+            return RoutedMusicProvider(chain, self.breaker())
+        raise _unsupported("music", name, ["mock", "routed", "elevenlabs", "library"])
 
     def sfx(self) -> SfxProvider:
         name = self.settings.provider_for("sfx")
         if name == "mock":
             return MockSfx()
-        raise _unsupported("sfx", name, ["mock"])
+        if name == "elevenlabs":
+            from avg_workers.providers.elevenlabs import ElevenLabsSfx
+
+            return ElevenLabsSfx(self.eleven(), self.ffmpeg)
+        raise _unsupported("sfx", name, ["mock", "elevenlabs"])
 
 
 def build_providers(settings: Settings, ffmpeg: FFmpeg) -> ProviderSet:

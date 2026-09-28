@@ -19,8 +19,15 @@ Phase 1 is in progress. The first real adapter is the **Claude story engine**
 (`PROVIDER_MODE=live` or `PROVIDER_LLM=anthropic` with `ANTHROPIC_API_KEY`): structured
 script and shot-list generation, a critic-and-revise pass, input and script moderation, and
 per-call cost tracking. Durations and reading speed are budgeted in code so contracts always
-validate. `workers/scripts/eval_story.py` is the prompt regression harness. Image, video,
-speech, music and SFX still run on mocks until their adapters land.
+validate. `workers/scripts/eval_story.py` is the prompt regression harness.
+
+Live mode also wires **fal.ai** for images (Flux 1.1 Pro, Flux Kontext for character
+references) and video (Kling 2.1 standard/pro, Wan, MiniMax) through fallback chains with a
+shared circuit breaker, and **ElevenLabs** for speech with word timestamps, sound effects and
+generated music, with a curated royalty-free library as the music fallback
+(`media/music-library`). Every adapter records provider, model and estimated cost on its
+artifacts. Set `PROVIDER_MODE=live` with `ANTHROPIC_API_KEY`, `FAL_KEY` and
+`ELEVENLABS_API_KEY`; any capability can be pinned back to `mock` with `PROVIDER_<CAP>`.
 
 ## Quickstart
 

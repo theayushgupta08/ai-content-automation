@@ -95,6 +95,20 @@ class Settings:
     breaker_open_sec: float = field(default_factory=lambda: float(_env("BREAKER_OPEN_SEC", "60")))
     redis_url: str = field(default_factory=lambda: _env("REDIS_URL", ""))
 
+    # ElevenLabs (speech, sound effects, music) and the curated music library.
+    elevenlabs_api_key: str = field(default_factory=lambda: _env("ELEVENLABS_API_KEY", ""))
+    elevenlabs_tts_model: str = field(
+        default_factory=lambda: _env("ELEVENLABS_TTS_MODEL", "eleven_multilingual_v2")
+    )
+    elevenlabs_voices: str = field(default_factory=lambda: _env("ELEVENLABS_VOICES", ""))
+    music_library_dir: Path = field(
+        default_factory=lambda: (
+            REPO_ROOT / _env("MUSIC_LIBRARY_DIR", "./media/music-library")
+        ).resolve()
+    )
+    # Comma-separated: elevenlabs, library. Tried in order.
+    music_chain: str = field(default_factory=lambda: _env("MUSIC_CHAIN", "elevenlabs,library"))
+
     ffmpeg_bin: str = field(default_factory=lambda: _env("FFMPEG_BIN", "ffmpeg"))
     ffprobe_bin: str = field(default_factory=lambda: _env("FFPROBE_BIN", "ffprobe"))
 
@@ -120,9 +134,9 @@ LIVE_DEFAULTS: dict[str, str] = {
     "llm": "anthropic",
     "image": "fal",
     "video": "fal",
-    "speech": "mock",
-    "music": "mock",
-    "sfx": "mock",
+    "speech": "elevenlabs",
+    "music": "routed",
+    "sfx": "elevenlabs",
 }
 
 
