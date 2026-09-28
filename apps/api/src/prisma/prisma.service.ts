@@ -11,12 +11,21 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     await this.$disconnect();
   }
 
-  /** Creates the fixed dev user/workspace pair used when DEV_AUTH=true. Idempotent. */
-  async ensureDevWorkspace(userId: string, workspaceId: string): Promise<void> {
+  /**
+   * Creates the fixed dev user/workspace pair used when DEV_AUTH=true. Idempotent; returns
+   * whether the user was created by this call.
+   */
+  async ensureDevWorkspace(userId: string, workspaceId: string): Promise<{ created: boolean }> {
+    const existing = await this.user.findUnique({ where: { id: userId }, select: { id: true } });
     await this.user.upsert({
       where: { id: userId },
       update: {},
-      create: { id: userId, externalId: `dev:${userId}`, email: 'dev@localhost', name: 'Dev User' },
+      create: {
+        id: userId,
+        externalId: `dev:${userId}`,
+        email: `dev-${userId.slice(0, 8)}@localhost`,
+        name: 'Dev User',
+      },
     });
     await this.workspace.upsert({
       where: { id: workspaceId },
@@ -33,9 +42,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       update: {},
       create: { workspaceId, userId, role: 'owner' },
     });
+    return { created: !existing };
   }
 
-  /** Maps an external (Clerk) user id to a user row and their personal workspace. */
+  /**
+   * Maps an external (Clerk) user id to a user row and their personal workspace. `created`
+   * is true when this call made the user (first sign-in).
+   */
   async ensureUserWorkspace(externalId: string, email?: string) {
     const user = await this.user.upsert({
       where: { externalId },
@@ -50,7 +63,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       const workspace = await this.workspace.findUniqueOrThrow({
         where: { id: ownerMembership.workspaceId },
       });
-      return { user, workspace };
+      return { user, workspace, created: false };
     }
     const workspace = await this.workspace.create({
       data: {
@@ -60,6 +73,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         members: { create: { userId: user.id, role: 'owner' } },
       },
     });
-    return { user, workspace };
+    return { user, workspace, created: true };
   }
 }

@@ -24,6 +24,9 @@ data:
   S3_PUBLIC_ENDPOINT: {{ .Values.config.media.publicEndpoint | quote }}
   MEDIA_URL_TTL_SEC: {{ .Values.config.media.urlTtlSec | quote }}
   PROVIDER_MODE: {{ .Values.config.providers.mode | quote }}
+  MAIL_TRANSPORT: auto
+  MAIL_FROM: {{ .Values.config.mail.from | quote }}
+  LOW_CREDITS_FLOOR: {{ .Values.config.mail.lowCreditsFloor | quote }}
   WORKER_METRICS_ADDR: {{ printf "0.0.0.0:%d" (int .Values.worker.metricsPort) | quote }}
   {{- range $k, $v := .Values.config.providers.settings }}
   {{ $k }}: {{ $v | quote }}

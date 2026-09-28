@@ -30,6 +30,16 @@ export function productionProblems(cfg: AppConfig, env = process.env): string[] 
     problems.push('STRIPE_WEBHOOK_SECRET is required when STRIPE_SECRET_KEY is set');
   }
   if (env.DATABASE_URL?.includes('avg:avg@')) problems.push('DATABASE_URL uses dev credentials');
+  if (
+    cfg.mail.transport === 'log' ||
+    (cfg.mail.transport === 'auto' && !cfg.mail.resendApiKey && !cfg.mail.smtpUrl)
+  ) {
+    problems.push(
+      'MAIL_TRANSPORT needs RESEND_API_KEY or SMTP_URL (lifecycle email would only be logged)',
+    );
+  }
+  if (cfg.mail.from.includes('@localhost'))
+    problems.push('MAIL_FROM must be a real sender address');
   return problems;
 }
 

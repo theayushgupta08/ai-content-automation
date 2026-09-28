@@ -62,6 +62,16 @@ export const appConfig = {
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
   },
   metricsToken: process.env.METRICS_TOKEN ?? '',
+  mail: {
+    // auto: resend when RESEND_API_KEY is set, else smtp when SMTP_URL is set, else log only.
+    transport: env('MAIL_TRANSPORT', 'auto') as 'auto' | 'log' | 'smtp' | 'resend',
+    from: env('MAIL_FROM', 'Storyframe <no-reply@localhost>'),
+    smtpUrl: process.env.SMTP_URL || undefined,
+    resendApiKey: process.env.RESEND_API_KEY || undefined,
+    // Low-credit warning fires when the balance drops below this many credits or 10% of the
+    // plan's period allowance, whichever is higher, once per billing period.
+    lowCreditsFloor: Number(env('LOW_CREDITS_FLOOR', '30')),
+  },
   pipelineVersion: env('PIPELINE_VERSION', 'v0'),
   corsOrigins: env('CORS_ORIGINS', 'http://localhost:3000')
     .split(',')

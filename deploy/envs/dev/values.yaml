@@ -17,8 +17,12 @@ config:
     publicEndpoint: http://localhost:9000
   providers:
     mode: mock
+  mail:
+    from: Storyframe <no-reply@localhost>
   extraEnv:
     RENDER_SCALE: '0.5'
+    # Mailpit from deploy/envs/dev/deps.yaml; inbox at http://localhost:8025 after port-forward.
+    SMTP_URL: smtp://mailpit:1025
 
 secrets:
   create: true

@@ -45,6 +45,7 @@ resource "aws_secretsmanager_secret_version" "seed" {
     ANTHROPIC_API_KEY          = ""
     FAL_KEY                    = ""
     ELEVENLABS_API_KEY         = ""
+    RESEND_API_KEY             = ""
     STRIPE_SECRET_KEY          = ""
     STRIPE_WEBHOOK_SECRET      = ""
     STRIPE_PRICE_STARTER_MONTH = ""

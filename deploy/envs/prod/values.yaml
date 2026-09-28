@@ -16,6 +16,8 @@ config:
     region: us-east-1
   providers:
     mode: live
+  mail:
+    from: Storyframe <no-reply@example.com>
 
 externalSecrets:
   enabled: true

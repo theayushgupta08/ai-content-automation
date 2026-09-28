@@ -10,6 +10,7 @@ import type { Request } from 'express';
 import { timingSafeEqual } from 'node:crypto';
 import { appConfig } from '../config';
 import { BillingService } from '../billing/billing.service';
+import { NotificationsService } from '../mail/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiError } from './problem.filter';
 
@@ -38,6 +39,7 @@ export class AuthGuard implements CanActivate {
   constructor(
     private readonly prisma: PrismaService,
     private readonly billing: BillingService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -53,8 +55,9 @@ export class AuthGuard implements CanActivate {
   private async devPrincipal(req: Request): Promise<Principal> {
     const userId = appConfig.auth.devUserId;
     const workspaceId = (req.headers['x-workspace-id'] as string) || appConfig.auth.devWorkspaceId;
-    await this.prisma.ensureDevWorkspace(userId, workspaceId);
+    const { created } = await this.prisma.ensureDevWorkspace(userId, workspaceId);
     await this.billing.grantTrial(workspaceId);
+    if (created) void this.notifications.welcome(userId, workspaceId);
     return { userId, workspaceId, via: 'dev' };
   }
 
@@ -74,8 +77,16 @@ export class AuthGuard implements CanActivate {
       this.logger.debug(`token verification failed: ${(e as Error).message}`);
       throw new ApiError(HttpStatus.UNAUTHORIZED, 'UNAUTHORIZED', 'Invalid token');
     }
-    const { user, workspace } = await this.prisma.ensureUserWorkspace(claims.sub, claims.email);
+    const { user, workspace, created } = await this.prisma.ensureUserWorkspace(
+      claims.sub,
+      claims.email,
+    );
     await this.billing.grantTrial(workspace.id);
+    if (created) {
+      // Session JWTs carry no email by default; look it up once so lifecycle mail can reach them.
+      if (!claims.email) await this.backfillEmail(user.id, claims.sub);
+      void this.notifications.welcome(user.id, workspace.id);
+    }
     const requested = req.headers['x-workspace-id'] as string | undefined;
     if (requested && requested !== workspace.id) {
       const member = await this.prisma.workspaceMember.findUnique({
@@ -85,6 +96,26 @@ export class AuthGuard implements CanActivate {
       return { userId: user.id, workspaceId: requested, via: 'clerk' };
     }
     return { userId: user.id, workspaceId: workspace.id, via: 'clerk' };
+  }
+
+  private async backfillEmail(userId: string, clerkUserId: string): Promise<void> {
+    try {
+      const { createClerkClient } = await import('@clerk/backend');
+      const clerk = createClerkClient({ secretKey: appConfig.auth.clerkSecretKey });
+      const u = await clerk.users.getUser(clerkUserId);
+      const primary =
+        u.emailAddresses.find((e) => e.id === u.primaryEmailAddressId)?.emailAddress ??
+        u.emailAddresses[0]?.emailAddress;
+      const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || null;
+      if (primary || name) {
+        await this.prisma.user.update({
+          where: { id: userId },
+          data: { ...(primary ? { email: primary } : {}), ...(name ? { name } : {}) },
+        });
+      }
+    } catch (e) {
+      this.logger.warn(`could not fetch Clerk profile for ${clerkUserId}: ${(e as Error).message}`);
+    }
   }
 }
 

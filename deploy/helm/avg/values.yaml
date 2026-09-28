@@ -43,13 +43,18 @@ config:
     # Optional per-capability pins (PROVIDER_LLM=anthropic, PROVIDER_VIDEO=mock, ...) and
     # model settings (ANTHROPIC_STORY_MODEL, VIDEO_CHAIN_STANDARD, ...).
     settings: {}
+  mail:
+    # Sender for lifecycle email. Delivery uses RESEND_API_KEY or SMTP_URL from the secret.
+    from: Storyframe <no-reply@example.com>
+    lowCreditsFloor: '30'
   # Free-form extra environment for every workload.
   extraEnv: {}
 
 # Credentials. All workloads read the same Secret through envFrom. Keys:
 #   required:  DATABASE_URL, REDIS_URL, INTERNAL_API_TOKEN, MEDIA_SIGNING_SECRET
 #   api:       CLERK_SECRET_KEY, METRICS_TOKEN, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
-#              STRIPE_PRICE_{STARTER,CREATOR,PRO,STUDIO}_{MONTH,YEAR}, STRIPE_PRICE_PACK_500
+#              STRIPE_PRICE_{STARTER,CREATOR,PRO,STUDIO}_{MONTH,YEAR}, STRIPE_PRICE_PACK_500,
+#              RESEND_API_KEY or SMTP_URL (lifecycle email)
 #   workers:   ANTHROPIC_API_KEY, FAL_KEY, ELEVENLABS_API_KEY
 #   both:      TEMPORAL_API_KEY, S3_ACCESS_KEY + S3_SECRET_KEY (omit on EKS with IRSA)
 secrets:

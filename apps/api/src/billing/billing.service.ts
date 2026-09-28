@@ -3,6 +3,7 @@ import { Prisma, SubscriptionStatus } from '@prisma/client';
 import Stripe from 'stripe';
 import { ApiError } from '../common/problem.filter';
 import { appConfig } from '../config';
+import { NotificationsService } from '../mail/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreditsService } from './credits.service';
 import { entitlementsForPlanId, type Entitlements } from './entitlements';
@@ -24,6 +25,7 @@ export class BillingService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly credits: CreditsService,
+    private readonly notifications: NotificationsService,
   ) {
     this.stripe = appConfig.stripe.secretKey ? new Stripe(appConfig.stripe.secretKey) : null;
   }
@@ -263,6 +265,38 @@ export class BillingService implements OnModuleInit {
       case 'customer.subscription.deleted': {
         await this.syncSubscription(event.data.object.id);
         outcome = 'processed';
+        break;
+      }
+      case 'invoice.upcoming': {
+        // Sent by Stripe a few days before renewal (no invoice id yet).
+        const invoice = event.data.object;
+        const customer =
+          typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id;
+        if (customer) {
+          await this.notifications.renewalUpcoming({
+            stripeCustomerId: customer,
+            amountMinor: invoice.amount_due ?? 0,
+            currency: invoice.currency ?? 'usd',
+            renewsAt: new Date((invoice.next_payment_attempt ?? invoice.period_end) * 1000),
+          });
+          outcome = 'processed';
+        }
+        break;
+      }
+      case 'invoice.payment_failed': {
+        const invoice = event.data.object;
+        const customer =
+          typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id;
+        if (customer && invoice.id) {
+          await this.notifications.paymentFailed({
+            stripeCustomerId: customer,
+            invoiceId: invoice.id,
+            attempt: invoice.attempt_count ?? 1,
+            amountMinor: invoice.amount_due ?? 0,
+            currency: invoice.currency ?? 'usd',
+          });
+          outcome = 'processed';
+        }
         break;
       }
       default:

@@ -27,6 +27,13 @@ function cfg(over: Partial<Record<string, unknown>> = {}): AppConfig {
       },
     },
     stripe: { secretKey: '', webhookSecret: '' },
+    mail: {
+      transport: 'auto',
+      from: 'Storyframe <no-reply@example.com>',
+      smtpUrl: undefined,
+      resendApiKey: 're_x',
+      lowCreditsFloor: 30,
+    },
     pipelineVersion: 'v0',
     corsOrigins: ['https://app.example.com'],
     ...over,
@@ -56,10 +63,12 @@ describe('productionProblems', () => {
         publicUrl: 'http://localhost:4000',
         webUrl: 'http://localhost:3000',
         stripe: { secretKey: 'sk_live', webhookSecret: '' },
+        mail: { transport: 'auto', from: 'Storyframe <no-reply@localhost>', lowCreditsFloor: 30 },
       }),
       { DATABASE_URL: 'postgresql://avg:avg@localhost:5432/avg' },
     );
-    expect(problems).toHaveLength(11);
+    expect(problems).toHaveLength(13);
+    expect(problems.join('\n')).toMatch(/MAIL_TRANSPORT/);
     expect(problems.join('\n')).toMatch(/DEV_AUTH/);
     expect(problems.join('\n')).toMatch(/STRIPE_WEBHOOK_SECRET/);
   });

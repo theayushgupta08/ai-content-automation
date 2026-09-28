@@ -37,8 +37,11 @@ plan & credits page in the dashboard. Without `STRIPE_SECRET_KEY` the ledger and
 work and checkout is disabled.
 
 Phase 1.5 hardening is in: S3 media storage, production config guardrails, Prometheus metrics
-and cost roll-ups, a k6 load test, and the deployment layer described under
-[Deploying](#deploying) below.
+and cost roll-ups, a k6 load test, the deployment layer described under
+[Deploying](#deploying) below, and **lifecycle email** (welcome, video ready or failed, low
+credits once per billing period, renewal reminder, payment failed) sent through Resend or any
+SMTP server and recorded in a `notifications` table. `make up` starts Mailpit so local runs
+deliver to <http://localhost:8025>.
 
 ## Quickstart
 

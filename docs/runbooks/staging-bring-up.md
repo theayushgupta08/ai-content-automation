@@ -54,7 +54,7 @@ Then fill the provider and vendor keys into the secret Terraform seeded (it alre
 ```bash
 aws secretsmanager get-secret-value --secret-id avg/staging/app --query SecretString --output text > /tmp/app.json
 # edit /tmp/app.json: CLERK_SECRET_KEY, TEMPORAL_API_KEY, ANTHROPIC_API_KEY, FAL_KEY,
-#                     ELEVENLABS_API_KEY, STRIPE_*; then
+#                     ELEVENLABS_API_KEY, RESEND_API_KEY, STRIPE_*; then
 aws secretsmanager put-secret-value --secret-id avg/staging/app --secret-string file:///tmp/app.json
 shred -u /tmp/app.json
 ```
@@ -120,6 +120,9 @@ kubectl -n avg-staging logs deploy/avg-api --tail=50
   an hour; `kubectl -n avg-staging annotate externalsecret avg-app force-sync=$(date +%s)`
   forces it).
 - Clerk → Domains → add `app.staging.example.com`.
+- Stripe → Webhooks: include `invoice.upcoming` and `invoice.payment_failed` so renewal and
+  payment-failed emails fire.
+- Resend → Domains: verify `staging.example.com` and set `config.mail.from` to an address on it.
 
 ## 7. Smoke test
 

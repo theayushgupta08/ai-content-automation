@@ -17,6 +17,8 @@ config:
     region: us-east-1
   providers:
     mode: live
+  mail:
+    from: Storyframe <no-reply@staging.example.com>
     settings:
       ANTHROPIC_EFFORT: medium
       VIDEO_CHAIN_STANDARD: fal-ai/kling-video/v2.1/standard/image-to-video,fal-ai/wan-i2v

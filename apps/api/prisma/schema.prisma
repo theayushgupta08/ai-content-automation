@@ -40,6 +40,7 @@ model Workspace {
   ledger        CreditLedger[]
   holds         CreditHold[]
   balance       CreditBalance?
+  notifications Notification[]
 
   @@map("workspaces")
 }
@@ -306,4 +307,30 @@ model StripeEvent {
   processedAt DateTime @default(now()) @map("processed_at")
 
   @@map("stripe_events")
+}
+
+enum NotificationStatus {
+  sent
+  failed
+  skipped
+}
+
+/// Every lifecycle email we tried to send. `dedupeKey` makes each trigger fire at most once
+/// (welcome per user, video_ready per job, low_credits per billing period, ...).
+model Notification {
+  id          String             @id @default(uuid()) @db.Uuid
+  workspaceId String             @map("workspace_id") @db.Uuid
+  userId      String?            @map("user_id") @db.Uuid
+  kind        String
+  dedupeKey   String             @unique @map("dedupe_key")
+  recipient   String
+  subject     String
+  status      NotificationStatus
+  error       String?
+  createdAt   DateTime           @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, createdAt])
+  @@map("notifications")
 }

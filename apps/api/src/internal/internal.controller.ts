@@ -19,6 +19,7 @@ import { CreditsService } from '../billing/credits.service';
 import { InternalGuard } from '../common/auth';
 import { ApiError } from '../common/problem.filter';
 import { JobEventsService, TERMINAL_EVENT_TYPES } from '../jobs/job-events.service';
+import { NotificationsService } from '../mail/notifications.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -68,6 +69,7 @@ export class InternalController {
     private readonly events: JobEventsService,
     private readonly credits: CreditsService,
     private readonly metrics: MetricsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   @Post('events')
@@ -155,6 +157,7 @@ export class InternalController {
         stage: err.stage ?? body.currentStage ?? job.currentStage ?? undefined,
         retryable: err.retryable,
       });
+      void this.notifications.jobFinished(id, body.status);
     }
     if (body.sceneCount !== undefined && body.sceneCount > 0) {
       await this.prisma.scene.createMany({
