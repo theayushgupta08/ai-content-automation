@@ -30,11 +30,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     settings = load_settings()
     logging.getLogger(__name__).info(
-        "starting worker: temporal=%s queue=%s api=%s media=%s providers=%s",
+        "starting worker: temporal=%s queue=%s api=%s media=%s:%s providers=%s",
         settings.temporal_address,
         settings.task_queue,
         settings.api_url if not args.no_api else "(disabled)",
-        settings.media_root,
+        settings.media_backend,
+        settings.media_root if settings.media_backend == "local" else settings.s3_bucket,
         settings.provider_mode,
     )
     from avg_workers.worker import run_worker

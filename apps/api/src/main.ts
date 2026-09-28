@@ -1,6 +1,9 @@
 import 'reflect-metadata';
 import { appConfig } from './config';
-import { Logger } from '@nestjs/common';
+import { assertProductionConfig } from './config.validate';
+import { ConsoleLogger, Logger } from '@nestjs/common';
+import helmet from 'helmet';
+import { requestIdMiddleware } from './common/request-id.middleware';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -8,10 +11,22 @@ import { AppModule } from './app.module';
 import { ProblemDetailsFilter } from './common/problem.filter';
 
 async function bootstrap(): Promise<void> {
+  assertProductionConfig(appConfig);
+  const production = appConfig.nodeEnv === 'production';
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
     rawBody: true,
+    bodyParser: true,
+    logger: production ? new ConsoleLogger({ json: true }) : undefined,
   });
+  app.use(requestIdMiddleware);
+  app.use(
+    helmet({
+      contentSecurityPolicy: false, // API only; the web app sets its own CSP
+      crossOriginResourcePolicy: { policy: 'cross-origin' }, // media is fetched cross-origin
+    }),
+  );
+  app.useBodyParser('json', { limit: '256kb' });
   app.useGlobalFilters(new ProblemDetailsFilter());
   app.enableCors({
     origin: appConfig.corsOrigins,
@@ -20,8 +35,16 @@ async function bootstrap(): Promise<void> {
       'Authorization',
       'Content-Type',
       'X-Workspace-Id',
+      'X-Request-Id',
       'Idempotency-Key',
       'Last-Event-ID',
+    ],
+    exposedHeaders: [
+      'X-Request-Id',
+      'RateLimit-Limit',
+      'RateLimit-Remaining',
+      'RateLimit-Reset',
+      'Retry-After',
     ],
   });
   app.enableShutdownHooks();

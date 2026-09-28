@@ -9,6 +9,7 @@ import type { Principal } from '../common/auth';
 import { appConfig } from '../config';
 import { MediaService } from '../media/media.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { TemporalService } from '../temporal/temporal.service';
 import { estimateJob } from './estimate';
 import { JobEventsService } from './job-events.service';
@@ -52,13 +53,45 @@ export class JobsService {
     private readonly media: MediaService,
     private readonly billing: BillingService,
     private readonly credits: CreditsService,
+    private readonly redis: RedisService,
   ) {}
 
   estimate(body: unknown) {
     return estimateJob(assertJobInput(body));
   }
 
-  async create(principal: Principal, body: unknown): Promise<JobView> {
+  /**
+   * Creates a job. With an Idempotency-Key the same key replays the original job for 24 h,
+   * so a client retry after a network failure never double-charges.
+   */
+  async create(principal: Principal, body: unknown, idempotencyKey?: string): Promise<JobView> {
+    const idemKey =
+      idempotencyKey && /^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)
+        ? `idem:${principal.workspaceId}:${idempotencyKey}`
+        : null;
+    if (idemKey) {
+      const claimed = await this.redis.client.set(idemKey, 'pending', 'EX', 86_400, 'NX');
+      if (claimed !== 'OK') {
+        const existing = await this.redis.client.get(idemKey);
+        if (existing && existing !== 'pending') return this.get(principal, existing);
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'IDEMPOTENT_REQUEST_IN_PROGRESS',
+          'A request with this Idempotency-Key is still being processed',
+        );
+      }
+    }
+    try {
+      const view = await this.createJob(principal, body);
+      if (idemKey) await this.redis.client.set(idemKey, view.id, 'EX', 86_400);
+      return view;
+    } catch (e) {
+      if (idemKey) await this.redis.client.del(idemKey);
+      throw e;
+    }
+  }
+
+  private async createJob(principal: Principal, body: unknown): Promise<JobView> {
     const input = assertJobInput(body);
     const estimate = estimateJob(input);
 
@@ -193,7 +226,7 @@ export class JobsService {
     });
     const page = rows.slice(0, limit);
     return {
-      data: page.map((j) => this.toView(j, [])),
+      data: await Promise.all(page.map((j) => this.toView(j, []))),
       nextCursor: rows.length > limit ? page[page.length - 1].id : null,
     };
   }
@@ -263,15 +296,17 @@ export class JobsService {
     return job;
   }
 
-  private signOutput(output: Record<string, string>) {
+  private async signOutput(output: Record<string, string>) {
+    const entries = Object.entries(output).filter(([, key]) => typeof key === 'string' && key);
+    const urls = await this.media.signedUrls(entries.map(([, key]) => key));
     const signed: Record<string, { url: string; expiresAt: string }> = {};
-    for (const [k, key] of Object.entries(output)) {
-      if (typeof key === 'string' && key) signed[k.replace(/Key$/, '')] = this.media.signedUrl(key);
-    }
+    entries.forEach(([k], i) => {
+      signed[k.replace(/Key$/, '')] = urls[i];
+    });
     return signed;
   }
 
-  private toView(
+  private async toView(
     job: VideoJob & {
       scenes: Array<{
         idx: number;
@@ -281,7 +316,11 @@ export class JobsService {
       }>;
     },
     artifacts: Array<{ kind: string; sceneIndex: number | null; storageKey: string }>,
-  ): JobView {
+  ): Promise<JobView> {
+    const [output, previewUrls] = await Promise.all([
+      job.output ? this.signOutput(job.output as Record<string, string>) : Promise.resolve(null),
+      this.media.signedUrls(artifacts.map((a) => a.storageKey)),
+    ]);
     return {
       id: job.id,
       status: job.status,
@@ -294,17 +333,17 @@ export class JobsService {
       sceneCount: job.sceneCount,
       flags: job.flags,
       error: job.error,
-      output: job.output ? this.signOutput(job.output as Record<string, string>) : null,
+      output,
       scenes: job.scenes.map((s) => ({
         idx: s.idx,
         status: s.status,
         actualSec: s.actualSec,
         providerVideo: s.providerVideo,
       })),
-      previews: artifacts.map((a) => ({
+      previews: artifacts.map((a, i) => ({
         kind: a.kind,
         sceneIndex: a.sceneIndex,
-        ...this.media.signedUrl(a.storageKey),
+        ...previewUrls[i],
       })),
       createdAt: job.createdAt.toISOString(),
       startedAt: job.startedAt?.toISOString() ?? null,

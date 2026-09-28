@@ -11,16 +11,23 @@ from avg_workers.api_client import ApiClient, NullApiClient
 from avg_workers.config import Settings
 from avg_workers.ffmpeg import FFmpeg
 from avg_workers.router import build_providers
-from avg_workers.storage import LocalStorage, Storage
+from avg_workers.storage import LocalStorage, S3Storage, Storage
 from avg_workers.workflows import SceneWorkflow, VideoJobWorkflow
 
 
 def build_storage(settings: Settings) -> Storage:
-    if settings.media_backend != "local":
-        raise NotImplementedError(
-            f"MEDIA_BACKEND={settings.media_backend!r} not implemented; use 'local'"
+    if settings.media_backend == "local":
+        return LocalStorage(settings.media_root)
+    if settings.media_backend == "s3":
+        return S3Storage(
+            settings.s3_bucket,
+            settings.media_cache_dir,
+            endpoint_url=settings.s3_endpoint,
+            region=settings.s3_region,
+            access_key=settings.s3_access_key,
+            secret_key=settings.s3_secret_key,
         )
-    return LocalStorage(settings.media_root)
+    raise ValueError(f"MEDIA_BACKEND={settings.media_backend!r} must be 'local' or 's3'")
 
 
 def build_activities(

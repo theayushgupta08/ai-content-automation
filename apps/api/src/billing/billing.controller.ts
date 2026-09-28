@@ -14,6 +14,7 @@ import {
 import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { AuthGuard, CurrentPrincipal, type Principal } from '../common/auth';
+import { RateLimitGuard } from '../common/rate-limit.guard';
 import { ApiError } from '../common/problem.filter';
 import { PrismaService } from '../prisma/prisma.service';
 import { BillingService } from './billing.service';
@@ -36,7 +37,7 @@ export class BillingController {
 
   @Get('v1/billing')
   @ApiBearerAuth()
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RateLimitGuard)
   @ApiOperation({
     summary: 'Plan, entitlements, credit balance and subscription for the workspace',
   })
@@ -46,14 +47,14 @@ export class BillingController {
 
   @Get('v1/billing/credits')
   @ApiBearerAuth()
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RateLimitGuard)
   credits_(@CurrentPrincipal() principal: Principal) {
     return this.credits.balance(principal.workspaceId);
   }
 
   @Get('v1/billing/credits/ledger')
   @ApiBearerAuth()
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RateLimitGuard)
   ledger(
     @CurrentPrincipal() principal: Principal,
     @Query('cursor') cursor?: string,
@@ -68,7 +69,7 @@ export class BillingController {
   @Post('v1/billing/checkout')
   @HttpCode(200)
   @ApiBearerAuth()
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RateLimitGuard)
   @ApiOperation({ summary: 'Create a Stripe Checkout session for a plan' })
   async checkout(
     @CurrentPrincipal() principal: Principal,
@@ -88,7 +89,7 @@ export class BillingController {
   @Post('v1/billing/credit-packs/checkout')
   @HttpCode(200)
   @ApiBearerAuth()
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RateLimitGuard)
   async checkoutPack(@CurrentPrincipal() principal: Principal) {
     const user = await this.prisma.user.findUnique({ where: { id: principal.userId } });
     return this.billing.checkoutPack(principal.workspaceId, user?.email);
@@ -97,7 +98,7 @@ export class BillingController {
   @Post('v1/billing/portal')
   @HttpCode(200)
   @ApiBearerAuth()
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, RateLimitGuard)
   portal(@CurrentPrincipal() principal: Principal) {
     return this.billing.portal(principal.workspaceId);
   }

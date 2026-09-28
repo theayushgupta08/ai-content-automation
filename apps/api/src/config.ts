@@ -42,6 +42,15 @@ export const appConfig = {
     root: resolve(REPO_ROOT, env('MEDIA_ROOT', './.local/media')),
     signingSecret: env('MEDIA_SIGNING_SECRET', env('INTERNAL_API_TOKEN', 'dev-internal-token')),
     urlTtlSec: Number(env('MEDIA_URL_TTL_SEC', String(24 * 3600))),
+    s3: {
+      bucket: env('S3_BUCKET', 'avg-media'),
+      endpoint: process.env.S3_ENDPOINT || undefined,
+      region: env('S3_REGION', 'us-east-1'),
+      accessKey: process.env.S3_ACCESS_KEY || undefined,
+      secretKey: process.env.S3_SECRET_KEY || undefined,
+      // Public host for presigned URLs when the API reaches S3 over an internal endpoint.
+      publicEndpoint: process.env.S3_PUBLIC_ENDPOINT || undefined,
+    },
   },
   webUrl: env('WEB_URL', 'http://localhost:3000'),
   stripe: {

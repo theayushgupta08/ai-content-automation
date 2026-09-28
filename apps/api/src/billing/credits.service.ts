@@ -80,6 +80,42 @@ export class CreditsService {
     });
   }
 
+  /** Support adjustment. Negative amounts never take the available balance below zero. */
+  async adjust(
+    workspaceId: string,
+    amount: number,
+    idempotencyKey: string,
+    metadata: Record<string, unknown>,
+  ): Promise<boolean> {
+    if (!Number.isInteger(amount) || amount === 0)
+      throw new Error('amount must be a non-zero integer');
+    return this.prisma.$transaction(async (tx) => {
+      if (await this.applied(tx, idempotencyKey)) return false;
+      const balance = await this.lockBalance(tx, workspaceId);
+      if (amount < 0 && balance.available + amount < 0) {
+        throw new ApiError(
+          HttpStatus.CONFLICT,
+          'INSUFFICIENT_CREDITS',
+          `Cannot remove ${-amount} credits; ${balance.available} available`,
+        );
+      }
+      await tx.creditLedger.create({
+        data: {
+          workspaceId,
+          amount,
+          reason: 'manual_adjustment',
+          idempotencyKey,
+          metadata: metadata as Prisma.InputJsonObject,
+        },
+      });
+      await tx.creditBalance.update({
+        where: { workspaceId },
+        data: { available: { increment: amount } },
+      });
+      return true;
+    });
+  }
+
   /** Reserves credits for a job. Throws INSUFFICIENT_CREDITS (402). Idempotent per job. */
   async hold(workspaceId: string, jobId: string, estimated: number): Promise<{ holdId: string }> {
     return this.prisma.$transaction(async (tx) => {

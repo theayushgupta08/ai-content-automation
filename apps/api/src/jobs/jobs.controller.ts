@@ -16,11 +16,12 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { JobStatus } from '@prisma/client';
 import { Observable } from 'rxjs';
 import { AuthGuard, CurrentPrincipal, type Principal } from '../common/auth';
+import { RateLimitGuard } from '../common/rate-limit.guard';
 import { JobsService } from './jobs.service';
 
 @ApiTags('jobs')
 @ApiBearerAuth()
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, RateLimitGuard)
 @Controller('v1/jobs')
 export class JobsController {
   constructor(private readonly jobs: JobsService) {}
@@ -35,8 +36,12 @@ export class JobsController {
   @Post()
   @HttpCode(202)
   @ApiOperation({ summary: 'Create a video job and start the pipeline' })
-  create(@CurrentPrincipal() principal: Principal, @Body() body: unknown) {
-    return this.jobs.create(principal, body);
+  create(
+    @CurrentPrincipal() principal: Principal,
+    @Body() body: unknown,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.jobs.create(principal, body, idempotencyKey);
   }
 
   @Get()

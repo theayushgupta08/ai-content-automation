@@ -11,10 +11,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 mkdir -p .local
 [ -f .env ] || cp .env.example .env
-set -a
-# shellcheck disable=SC1091
-source .env
-set +a
+# Load .env without overriding variables already set in the environment, so
+# `MEDIA_BACKEND=s3 bash scripts/demo.sh` works against a running S3.
+while IFS= read -r line; do
+  case "$line" in ''|'#'*) continue ;; esac
+  key="${line%%=*}"; value="${line#*=}"
+  [ -n "${!key+x}" ] || export "$key=$value"
+done < .env
 
 API_URL="${API_URL:-http://localhost:4000}"
 TEMPORAL_ADDRESS="${TEMPORAL_ADDRESS:-localhost:7233}"
@@ -87,6 +90,13 @@ BODY=$(cat <<JSON
 }
 JSON
 )
+if [ "${DEV_AUTH:-true}" = "true" ]; then
+  # Local runs use the fixed dev workspace; keep it funded through the support endpoint.
+  TOPUP=$(curl -s -X POST "$API_URL/internal/workspaces/${DEV_WORKSPACE_ID:-00000000-0000-0000-0000-000000000001}/credits/adjust" \
+    -H "authorization: Bearer ${INTERNAL_API_TOKEN:-dev-internal-token}" -H 'content-type: application/json' \
+    -d '{"amount": 200, "note": "demo top-up", "actor": "scripts/demo.sh"}')
+  log "dev workspace credits: $(printf '%s' "$TOPUP" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("balance"))')"
+fi
 log "cost preview: $(curl -sf -X POST "$API_URL/v1/jobs/estimate" -H 'content-type: application/json' -d "$BODY")"
 JOB=$(curl -s -X POST "$API_URL/v1/jobs" -H 'content-type: application/json' -d "$BODY")
 JOB_ID=$(printf '%s' "$JOB" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("id",""))')

@@ -39,6 +39,15 @@ class Settings:
     media_root: Path = field(
         default_factory=lambda: (REPO_ROOT / _env("MEDIA_ROOT", "./.local/media")).resolve()
     )
+    s3_bucket: str = field(default_factory=lambda: _env("S3_BUCKET", "avg-media"))
+    s3_endpoint: str = field(default_factory=lambda: _env("S3_ENDPOINT", ""))
+    s3_region: str = field(default_factory=lambda: _env("S3_REGION", ""))
+    s3_access_key: str = field(default_factory=lambda: _env("S3_ACCESS_KEY", ""))
+    s3_secret_key: str = field(default_factory=lambda: _env("S3_SECRET_KEY", ""))
+    # Local cache for S3 objects; per pod, safe to wipe.
+    media_cache_dir: Path = field(
+        default_factory=lambda: Path(_env("MEDIA_CACHE_DIR", "/tmp/avg-media-cache"))
+    )
 
     # "mock" runs every capability on local mocks; "live" defaults each capability to its
     # first real adapter. PROVIDER_<CAP> overrides one capability (e.g. PROVIDER_LLM=anthropic).

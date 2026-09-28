@@ -11,6 +11,7 @@ dependencies = [
   "python-dotenv>=1.0",
   "anthropic>=1.8,<2",
   "redis>=5.2,<7",
+  "boto3>=1.35",
 ]
 
 [project.optional-dependencies]
@@ -20,6 +21,7 @@ dev = [
   "ruff>=0.6",
   "mypy>=1.11",
   "datamodel-code-generator>=0.26",
+  "moto[s3,server]>=5.0",
 ]
 
 [project.scripts]
@@ -60,3 +62,7 @@ exclude = ["avg_workers/contracts/generated"]
 [[tool.mypy.overrides]]
 module = "avg_workers.contracts.generated.*"
 ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["boto3", "boto3.*", "botocore", "botocore.*", "moto", "moto.*"]
+ignore_missing_imports = true

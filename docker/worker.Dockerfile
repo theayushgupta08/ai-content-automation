@@ -20,6 +20,6 @@ RUN uv sync --no-dev
 RUN useradd --create-home --uid 10001 worker && chown -R worker:worker /app
 USER worker
 
-ENV PATH="/app/workers/.venv/bin:$PATH"
+ENV PATH="/app/workers/.venv/bin:$PATH" MEDIA_BACKEND=s3 MEDIA_CACHE_DIR=/tmp/avg-media-cache
 ENTRYPOINT ["avg-worker"]
 CMD ["--all"]
