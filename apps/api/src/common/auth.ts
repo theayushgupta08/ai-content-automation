@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { timingSafeEqual } from 'node:crypto';
 import { appConfig } from '../config';
 import { BillingService } from '../billing/billing.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -94,11 +95,18 @@ export class InternalGuard implements CanActivate {
     const req = ctx.switchToHttp().getRequest<Request>();
     const header = req.headers.authorization ?? '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-    if (!token || token !== appConfig.internalToken) {
+    if (!token || !secretEquals(token, appConfig.internalToken)) {
       throw new ApiError(HttpStatus.UNAUTHORIZED, 'UNAUTHORIZED', 'Invalid internal token');
     }
     return true;
   }
+}
+
+/** Constant-time comparison for shared secrets. */
+export function secretEquals(given: string, expected: string): boolean {
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 export const CurrentPrincipal = createParamDecorator(
