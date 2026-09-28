@@ -73,6 +73,8 @@ export const appConfig = {
     lowCreditsFloor: Number(env('LOW_CREDITS_FLOOR', '30')),
   },
   pipelineVersion: env('PIPELINE_VERSION', 'v0'),
+  // Days between an account deletion request and the irreversible purge (undo window).
+  accountDeletionGraceDays: Number(env('ACCOUNT_DELETION_GRACE_DAYS', '7')),
   corsOrigins: env('CORS_ORIGINS', 'http://localhost:3000')
     .split(',')
     .map((s) => s.trim()),

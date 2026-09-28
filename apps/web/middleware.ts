@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
 const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
-const isProtected = createRouteMatcher(['/new(.*)', '/jobs(.*)']);
+const isProtected = createRouteMatcher(['/new(.*)', '/jobs(.*)', '/billing(.*)', '/account(.*)']);
 
 // With Clerk configured, dashboard routes require a session; without it (local dev) the API's
 // DEV_AUTH mode accepts anonymous requests as the dev workspace.

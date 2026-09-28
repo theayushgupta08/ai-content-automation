@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AccountModule } from './account/account.module';
 import { BillingModule } from './billing/billing.module';
 import { HealthController } from './health/health.controller';
 import { InternalModule } from './internal/internal.module';
@@ -20,6 +21,7 @@ import { TemporalModule } from './temporal/temporal.module';
     MailModule,
     BillingModule,
     JobsModule,
+    AccountModule,
     InternalModule,
   ],
   controllers: [HealthController],

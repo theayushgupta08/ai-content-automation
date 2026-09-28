@@ -26,13 +26,15 @@ model User {
 }
 
 model Workspace {
-  id        String   @id @default(uuid()) @db.Uuid
-  slug      String   @unique
-  name      String
-  ownerId   String   @map("owner_id") @db.Uuid
-  settings  Json     @default("{}")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id                  String    @id @default(uuid()) @db.Uuid
+  slug                String    @unique
+  name                String
+  ownerId             String    @map("owner_id") @db.Uuid
+  settings            Json      @default("{}")
+  /// Set by the owner's deletion request; the purge job hard-deletes after the grace period.
+  deletionRequestedAt DateTime? @map("deletion_requested_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
   members       WorkspaceMember[]
   jobs          VideoJob[]

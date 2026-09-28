@@ -101,3 +101,46 @@ a {
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 50%, transparent);
 }
+
+/* Legal pages */
+.legal h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+.legal .meta {
+  color: var(--muted);
+  font-size: 0.875rem;
+  margin-bottom: 1.5rem;
+}
+.legal h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 1.75rem 0 0.5rem;
+}
+.legal p,
+.legal li {
+  line-height: 1.6;
+  margin-bottom: 0.75rem;
+}
+.legal ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.legal a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.legal table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  margin: 0.75rem 0 1rem;
+}
+.legal th,
+.legal td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}

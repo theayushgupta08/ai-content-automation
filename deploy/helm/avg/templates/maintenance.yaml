@@ -1,0 +1,52 @@
+{{- if and .Values.maintenance.enabled .Values.api.enabled }}
+# Scheduled housekeeping: purges workspaces whose deletion grace period has elapsed.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "avg.fullname" . }}-maintenance
+  labels:
+    {{- include "avg.labels" . | nindent 4 }}
+    app.kubernetes.io/component: maintenance
+spec:
+  schedule: {{ .Values.maintenance.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            {{- include "avg.selectorLabels" (dict "root" . "component" "maintenance") | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          {{- include "avg.imagePullSecrets" . | nindent 10 }}
+          containers:
+            - name: purge
+              image: {{ include "avg.image" (dict "root" . "image" .Values.api.image) }}
+              imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+              command:
+                - node
+                - -e
+                - |
+                  const url = process.env.API_URL + '/internal/maintenance/purge';
+                  fetch(url, { method: 'POST', headers: { authorization: 'Bearer ' + process.env.INTERNAL_API_TOKEN } })
+                    .then(async (r) => { console.log(r.status, await r.text()); if (!r.ok) process.exit(1); })
+                    .catch((e) => { console.error(e); process.exit(1); });
+              env:
+                - name: API_URL
+                  value: {{ printf "http://%s-api" (include "avg.fullname" .) | quote }}
+                - name: INTERNAL_API_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "avg.secretName" . }}
+                      key: INTERNAL_API_TOKEN
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits: { cpu: 200m, memory: 128Mi }
+              securityContext:
+                {{- include "avg.securityContext" . | nindent 16 }}
+{{- end }}

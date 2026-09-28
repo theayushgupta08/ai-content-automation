@@ -98,6 +98,17 @@ export class JobsService {
     const estimate = estimateJob(input);
 
     await this.reconcileStale(principal.workspaceId);
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id: principal.workspaceId },
+      select: { deletionRequestedAt: true },
+    });
+    if (workspace?.deletionRequestedAt) {
+      throw new ApiError(
+        HttpStatus.FORBIDDEN,
+        'ACCOUNT_DELETION_PENDING',
+        'This workspace is scheduled for deletion; cancel the deletion to create videos',
+      );
+    }
     const [entitlements, activeJobs] = await Promise.all([
       this.billing.entitlements(principal.workspaceId),
       this.prisma.videoJob.count({

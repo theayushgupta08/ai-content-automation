@@ -74,11 +74,20 @@ jobs:
         env:
           API_URL: ${{ matrix.api_url_var && vars[matrix.api_url_var] || '' }}
           CLERK_KEY: ${{ matrix.clerk_var && vars[matrix.clerk_var] || '' }}
+          COMPANY_NAME: ${{ vars.COMPANY_NAME }}
+          COMPANY_ADDRESS: ${{ vars.COMPANY_ADDRESS }}
+          LEGAL_JURISDICTION: ${{ vars.LEGAL_JURISDICTION }}
+          LEGAL_EMAIL: ${{ vars.LEGAL_EMAIL }}
+          PRIVACY_EMAIL: ${{ vars.PRIVACY_EMAIL }}
+          SUPPORT_EMAIL: ${{ vars.SUPPORT_EMAIL }}
         run: |
           {
             echo "args<<EOF"
             [ -n "$API_URL" ] && echo "NEXT_PUBLIC_API_URL=$API_URL"
             [ -n "$CLERK_KEY" ] && echo "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$CLERK_KEY"
+            for v in COMPANY_NAME COMPANY_ADDRESS LEGAL_JURISDICTION LEGAL_EMAIL PRIVACY_EMAIL SUPPORT_EMAIL; do
+              [ -n "${!v}" ] && echo "NEXT_PUBLIC_$v=${!v}"
+            done
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6

@@ -118,6 +118,20 @@ async function request<T>(
   return (await res.json()) as T;
 }
 
+export interface AccountView {
+  user: { id: string; email: string; name: string | null; createdAt: string };
+  workspace: {
+    id: string;
+    name: string;
+    slug: string;
+    createdAt: string;
+    role: string | null;
+    members: Array<{ email: string; role: string }>;
+  };
+  deletion: { requestedAt: string; purgeAt: string } | null;
+  graceDays: number;
+}
+
 export const api = {
   estimate: (input: JobInput, headers: Headers) =>
     request<Estimate>('/v1/jobs/estimate', {
@@ -151,6 +165,16 @@ export const api = {
     request<{ url: string }>('/v1/billing/credit-packs/checkout', { method: 'POST', headers }),
   portal: (headers: Headers) =>
     request<{ url: string }>('/v1/billing/portal', { method: 'POST', headers }),
+  account: (headers: Headers) => request<AccountView>('/v1/account', { headers }),
+  exportAccount: (headers: Headers) => request<unknown>('/v1/account/export', { headers }),
+  requestDeletion: (headers: Headers) =>
+    request<AccountView>('/v1/account/delete', {
+      method: 'POST',
+      body: JSON.stringify({ confirm: 'DELETE' }),
+      headers,
+    }),
+  cancelDeletion: (headers: Headers) =>
+    request<AccountView>('/v1/account/delete/cancel', { method: 'POST', headers }),
 };
 
 export const STAGES = [

@@ -176,6 +176,11 @@ migrations:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { cpu: 500m, memory: 512Mi }
 
+# Daily purge of accounts past their deletion grace period (POST /internal/maintenance/purge).
+maintenance:
+  enabled: true
+  schedule: '17 3 * * *'
+
 ingress:
   enabled: true
   className: nginx

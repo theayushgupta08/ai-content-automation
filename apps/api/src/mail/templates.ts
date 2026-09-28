@@ -225,3 +225,30 @@ Update payment method: ${p.billingUrl}
 `,
   };
 }
+
+export function deletionScheduled(p: {
+  workspaceName: string;
+  purgeAt: Date;
+  accountUrl: string;
+}): Rendered {
+  const subject = `Your ${BRAND} account will be deleted on ${fmtDate(p.purgeAt)}`;
+  return {
+    subject,
+    html: layout(
+      subject,
+      `<h1 style="font-size:22px;margin:0 0 16px">Deletion scheduled</h1>
+<p>We received a request to delete the workspace <strong>${escapeHtml(p.workspaceName)}</strong>, its videos, characters, billing history and account. Everything is permanently erased on <strong>${fmtDate(p.purgeAt)}</strong>.</p>
+<p>Running jobs were canceled and their credits returned. Until then you can change your mind with one click.</p>
+${button('Keep my account', p.accountUrl)}
+<p style="color:#636366">If you did not request this, sign in and cancel the deletion, then change your password with your sign-in provider.</p>`,
+    ),
+    text: `Deletion scheduled
+
+We received a request to delete the workspace "${p.workspaceName}", its videos, characters, billing history and account. Everything is permanently erased on ${fmtDate(p.purgeAt)}.
+
+Running jobs were canceled and their credits returned. Until then you can cancel the deletion here: ${p.accountUrl}
+
+If you did not request this, sign in and cancel the deletion, then change your password with your sign-in provider.
+`,
+  };
+}

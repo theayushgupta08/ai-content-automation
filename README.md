@@ -43,6 +43,12 @@ credits once per billing period, renewal reminder, payment failed) sent through 
 SMTP server and recorded in a `notifications` table. `make up` starts Mailpit so local runs
 deliver to <http://localhost:8025>.
 
+Privacy and legal: the dashboard ships Terms, Privacy and Sub-processor pages (`/legal/*`,
+drafts for counsel to review; identity comes from `NEXT_PUBLIC_COMPANY_*`), and an account page
+with a full **data export** (JSON with 24 h media links) and **account deletion**: running jobs
+are canceled, new ones blocked, and after a grace period a scheduled purge removes media, rows,
+the Stripe customer and the Clerk user.
+
 ## Quickstart
 
 Prerequisites: Node 22 + pnpm 10, Python 3.11+ + [uv](https://docs.astral.sh/uv/), ffmpeg,

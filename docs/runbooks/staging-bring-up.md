@@ -88,7 +88,9 @@ target, commit and push to main:
 - `api.serviceAccount.annotations` and `worker.serviceAccount.annotations` role ARNs
 
 Set the GitHub repository variables `STAGING_API_URL` (`https://api.staging.example.com`)
-and `STAGING_CLERK_PUBLISHABLE_KEY` so the dashboard image is built against them.
+and `STAGING_CLERK_PUBLISHABLE_KEY` so the dashboard image is built against them, plus
+`COMPANY_NAME`, `COMPANY_ADDRESS`, `LEGAL_JURISDICTION`, `LEGAL_EMAIL`, `PRIVACY_EMAIL` and
+`SUPPORT_EMAIL` for the legal pages (have counsel review `apps/web/app/legal` first).
 
 ## 5. First release
 
