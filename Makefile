@@ -7,6 +7,7 @@ help:
 	@echo "  migrate        apply Prisma migrations to DATABASE_URL"
 	@echo "  dev            run api, web and workers with hot reload (requires 'make up')"
 	@echo "  demo           run one job end to end against mock providers and print the MP4 path"
+	@echo "  loadtest       run the k6 API load test against API_URL (default localhost:4000)"
 	@echo "  test           run all test suites"
 	@echo "  lint           lint TypeScript and Python"
 	@echo "  typecheck      typecheck TypeScript and Python"
@@ -35,6 +36,9 @@ dev:
 
 demo:
 	bash scripts/demo.sh
+
+loadtest:
+	k6 run scripts/load/api-smoke.js
 
 test:
 	pnpm test

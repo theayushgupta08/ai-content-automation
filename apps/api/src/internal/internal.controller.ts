@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
+  Logger,
   Param,
   ParseIntPipe,
   ParseUUIDPipe,
@@ -17,9 +19,24 @@ import { CreditsService } from '../billing/credits.service';
 import { InternalGuard } from '../common/auth';
 import { ApiError } from '../common/problem.filter';
 import { JobEventsService, TERMINAL_EVENT_TYPES } from '../jobs/job-events.service';
+import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 const TERMINAL_STATUSES = new Set<JobStatus>(['completed', 'failed', 'canceled', 'needs_review']);
+
+/** Cost recorded on an artifact: `costUsd` (media) or `usage.costUsd` (LLM calls). */
+export function artifactCost(metadata: Record<string, unknown>): number {
+  const direct = Number(metadata.costUsd ?? 0);
+  const usage = metadata.usage as { costUsd?: number } | undefined;
+  const fromUsage = Number(usage?.costUsd ?? 0);
+  const total =
+    (Number.isFinite(direct) ? direct : 0) + (Number.isFinite(fromUsage) ? fromUsage : 0);
+  return total > 0 ? total : 0;
+}
+
+function round4(n: number): number {
+  return Math.round(n * 10_000) / 10_000;
+}
 
 interface JobPatch {
   status?: JobStatus;
@@ -44,10 +61,13 @@ interface JobPatch {
 @UseGuards(InternalGuard)
 @Controller('internal/jobs/:id')
 export class InternalController {
+  private readonly logger = new Logger(InternalController.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: JobEventsService,
     private readonly credits: CreditsService,
+    private readonly metrics: MetricsService,
   ) {}
 
   @Post('events')
@@ -60,6 +80,9 @@ export class InternalController {
       event.type,
       event.payload as Record<string, unknown>,
     );
+    if (event.type === 'stage.completed' && event.payload.stage) {
+      this.metrics.stageCompleted.inc({ stage: String(event.payload.stage) });
+    }
     if (TERMINAL_EVENT_TYPES.has(event.type)) {
       await this.prisma.videoJob.updateMany({
         where: { id, completedAt: null },
@@ -114,6 +137,13 @@ export class InternalController {
     }
     await this.prisma.videoJob.update({ where: { id }, data });
     if (body.status && TERMINAL_STATUSES.has(body.status)) {
+      const costUsd = await this.rollUpCost(id);
+      this.metrics.jobsFinished.inc({ status: body.status });
+      this.metrics.jobDuration.observe((Date.now() - job.createdAt.getTime()) / 1000);
+      this.metrics.creditsHeld.set(await this.heldCredits());
+      this.logger.log(
+        `job ${id} ${body.status}: credits=${data.actualCredits ?? job.actualCredits ?? '?'} cost=$${costUsd.toFixed(4)}`,
+      );
       const err = (body.error ?? {}) as Record<string, unknown>;
       await this.events.appendTerminal(id, body.status, {
         output: body.output,
@@ -133,6 +163,40 @@ export class InternalController {
       });
     }
     return { ok: true };
+  }
+
+  /** Per-artifact provider cost breakdown for support and margin analysis. */
+  @Get('costs')
+  async costs(@Param('id', ParseUUIDPipe) id: string) {
+    const job = await this.exists(id);
+    const artifacts = await this.prisma.artifact.findMany({
+      where: { jobId: id },
+      orderBy: { createdAt: 'asc' },
+      select: { kind: true, sceneIndex: true, metadata: true },
+    });
+    const items = artifacts
+      .map((a) => ({
+        kind: a.kind,
+        sceneIndex: a.sceneIndex,
+        provider: (a.metadata as Record<string, unknown>).provider ?? null,
+        model: (a.metadata as Record<string, unknown>).model ?? null,
+        costUsd: artifactCost(a.metadata as Record<string, unknown>),
+      }))
+      .filter((i) => i.costUsd > 0);
+    const totalUsd = items.reduce((sum, i) => sum + i.costUsd, 0);
+    const byProvider: Record<string, number> = {};
+    for (const i of items) {
+      const key = String(i.provider ?? 'unknown');
+      byProvider[key] = (byProvider[key] ?? 0) + i.costUsd;
+    }
+    return {
+      jobId: id,
+      status: job.status,
+      credits: { estimated: job.estimatedCredits, actual: job.actualCredits },
+      totalUsd: round4(totalUsd),
+      byProvider: Object.fromEntries(Object.entries(byProvider).map(([k, v]) => [k, round4(v)])),
+      items,
+    };
   }
 
   @Post('artifacts')
@@ -157,6 +221,16 @@ export class InternalController {
     }
     await this.exists(id);
     const metadata = (body.metadata ?? {}) as Prisma.InputJsonObject;
+    const cost = artifactCost(metadata as Record<string, unknown>);
+    if (cost > 0) {
+      this.metrics.providerCostUsd.inc(
+        {
+          provider: String((metadata as Record<string, unknown>).provider ?? 'unknown'),
+          kind: body.kind,
+        },
+        cost,
+      );
+    }
     const artifact = await this.prisma.artifact.upsert({
       where: { jobId_storageKey: { jobId: id, storageKey: body.storageKey } },
       update: {
@@ -209,6 +283,24 @@ export class InternalController {
       },
     });
     return { ok: true };
+  }
+
+  private async rollUpCost(id: string): Promise<number> {
+    const artifacts = await this.prisma.artifact.findMany({
+      where: { jobId: id },
+      select: { metadata: true },
+    });
+    const total = artifacts.reduce(
+      (sum, a) => sum + artifactCost(a.metadata as Record<string, unknown>),
+      0,
+    );
+    await this.prisma.videoJob.update({ where: { id }, data: { actualCostUsd: round4(total) } });
+    return total;
+  }
+
+  private async heldCredits(): Promise<number> {
+    const agg = await this.prisma.creditBalance.aggregate({ _sum: { held: true } });
+    return agg._sum.held ?? 0;
   }
 
   private async exists(id: string) {

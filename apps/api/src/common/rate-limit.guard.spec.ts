@@ -30,16 +30,16 @@ describe('RateLimitGuard', () => {
     expect(await guard.canActivate(ctx().context)).toBe(true);
   });
 
-  it('limits a free workspace to 30 requests per minute with standard headers', async () => {
+  it('limits a free workspace to 60 requests per minute with standard headers', async () => {
     const store = new MemoryStore();
     const guard = new RateLimitGuard({} as never, billing, store);
     const p = { workspaceId: 'ws', userId: 'u' };
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 60; i++) {
       expect(await guard.canActivate(ctx(p).context)).toBe(true);
     }
     const last = ctx(p);
     await expect(guard.canActivate(last.context)).rejects.toMatchObject({ status: 429 });
-    expect(last.headers['RateLimit-Limit']).toBe('30');
+    expect(last.headers['RateLimit-Limit']).toBe('60');
     expect(last.headers['RateLimit-Remaining']).toBe('0');
     expect(Number(last.headers['Retry-After'])).toBeGreaterThan(0);
   });

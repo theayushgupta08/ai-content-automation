@@ -57,6 +57,7 @@ export const appConfig = {
     secretKey: process.env.STRIPE_SECRET_KEY ?? '',
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
   },
+  metricsToken: process.env.METRICS_TOKEN ?? '',
   pipelineVersion: env('PIPELINE_VERSION', 'v0'),
   corsOrigins: env('CORS_ORIGINS', 'http://localhost:3000')
     .split(',')

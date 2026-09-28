@@ -101,6 +101,8 @@ model VideoJob {
   estimatedCredits   Int       @map("estimated_credits")
   actualCredits      Int?      @map("actual_credits")
   creditsHeld        Int       @default(0) @map("credits_held")
+  /// Estimated provider spend summed from artifact metadata at completion (internal only).
+  actualCostUsd      Decimal?  @map("actual_cost_usd") @db.Decimal(10, 4)
   /// Storage keys of deliverables: {mp4Key, previewKey, srtKey, vttKey, thumbKey, posterKey}.
   output             Json?
   flags              String[]  @default([])

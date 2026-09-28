@@ -1,6 +1,7 @@
 import { Injectable, Logger, MessageEvent } from '@nestjs/common';
 import { JobStatus, Prisma } from '@prisma/client';
 import { Observable } from 'rxjs';
+import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PublishedJobEvent, RedisService } from '../redis/redis.service';
 
@@ -33,6 +34,7 @@ export class JobEventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
+    private readonly metrics: MetricsService,
   ) {}
 
   async append(
@@ -116,6 +118,7 @@ export class JobEventsService {
    */
   stream(jobId: string, lastSeq = 0): Observable<MessageEvent> {
     return new Observable<MessageEvent>((subscriber) => {
+      this.metrics.sseClients.inc();
       let lastSeen = lastSeq;
       let replayDone = false;
       const buffered: PublishedJobEvent[] = [];
@@ -158,6 +161,7 @@ export class JobEventsService {
         closed = true;
         clearInterval(ping);
         live.unsubscribe();
+        this.metrics.sseClients.dec();
       };
     });
   }

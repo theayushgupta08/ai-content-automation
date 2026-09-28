@@ -14,9 +14,9 @@ import { ApiError } from './problem.filter';
 
 /** Requests per minute per workspace by plan (docs/05 §5). */
 export const REQUESTS_PER_MINUTE: Record<string, number> = {
-  free: 30,
-  starter: 60,
-  creator: 120,
+  free: 60, // a live progress page refreshes on every pipeline event
+  starter: 120,
+  creator: 240,
   pro: 600,
   studio: 1200,
   enterprise: 3000,

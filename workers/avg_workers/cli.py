@@ -4,10 +4,26 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import sys
 
 from avg_workers.config import load_settings
+
+
+class JsonHandler(logging.StreamHandler):  # type: ignore[type-arg]
+    """One JSON object per line for log aggregation (Loki, CloudWatch)."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "ts": self.formatter.formatTime(record) if self.formatter else record.created,
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exc"] = logging.Formatter().formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=False)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -23,12 +39,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args(argv)
 
-    logging.basicConfig(
-        level=getattr(logging, args.log_level.upper(), logging.INFO),
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        stream=sys.stderr,
-    )
     settings = load_settings()
+    level = getattr(logging, args.log_level.upper(), logging.INFO)
+    if settings.log_format == "json":
+        logging.basicConfig(level=level, handlers=[JsonHandler(sys.stderr)])
+    else:
+        logging.basicConfig(
+            level=level,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+            stream=sys.stderr,
+        )
     logging.getLogger(__name__).info(
         "starting worker: temporal=%s queue=%s api=%s media=%s:%s providers=%s",
         settings.temporal_address,

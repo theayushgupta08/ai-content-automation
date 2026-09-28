@@ -9,6 +9,7 @@ import type { Principal } from '../common/auth';
 import { appConfig } from '../config';
 import { MediaService } from '../media/media.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { MetricsService } from '../metrics/metrics.service';
 import { RedisService } from '../redis/redis.service';
 import { TemporalService } from '../temporal/temporal.service';
 import { estimateJob } from './estimate';
@@ -54,6 +55,7 @@ export class JobsService {
     private readonly billing: BillingService,
     private readonly credits: CreditsService,
     private readonly redis: RedisService,
+    private readonly metrics: MetricsService,
   ) {}
 
   estimate(body: unknown) {
@@ -137,6 +139,7 @@ export class JobsService {
         where: { id: job.id },
         data: { temporalWorkflowId: workflowId },
       });
+      this.metrics.jobsStarted.inc({ tier: input.options.videoTier });
     } catch (e) {
       this.logger.error(`failed to start workflow for job ${job.id}: ${(e as Error).message}`);
       await this.credits.release(job.id, true);

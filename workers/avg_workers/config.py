@@ -118,6 +118,11 @@ class Settings:
     # Comma-separated: elevenlabs, library. Tried in order.
     music_chain: str = field(default_factory=lambda: _env("MUSIC_CHAIN", "elevenlabs,library"))
 
+    # Prometheus endpoint for Temporal SDK metrics (task latency, backlog, failures).
+    # Blank disables it.
+    metrics_bind: str = field(default_factory=lambda: _env("WORKER_METRICS_ADDR", "0.0.0.0:9464"))
+    log_format: str = field(default_factory=lambda: _env("LOG_FORMAT", "text"))
+
     ffmpeg_bin: str = field(default_factory=lambda: _env("FFMPEG_BIN", "ffmpeg"))
     ffprobe_bin: str = field(default_factory=lambda: _env("FFPROBE_BIN", "ffprobe"))
 

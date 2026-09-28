@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from temporalio.client import Client
 from temporalio.contrib.pydantic import pydantic_data_converter
+from temporalio.runtime import PrometheusConfig, Runtime, TelemetryConfig
 from temporalio.worker import Worker
 
 from avg_workers.activities.pipeline import PipelineActivities, all_activities
@@ -44,6 +45,20 @@ def build_activities(
     )
 
 
+def configure_runtime(settings: Settings) -> None:
+    """Expose Temporal SDK metrics on WORKER_METRICS_ADDR. Must run before any client connects."""
+    if not settings.metrics_bind:
+        return
+    Runtime.set_default(
+        Runtime(
+            telemetry=TelemetryConfig(
+                metrics=PrometheusConfig(bind_address=settings.metrics_bind),
+                metric_prefix="avg_worker_",
+            )
+        )
+    )
+
+
 async def connect(settings: Settings) -> Client:
     return await Client.connect(
         settings.temporal_address,
@@ -65,6 +80,7 @@ def build_worker(
 
 
 async def run_worker(settings: Settings, *, no_api: bool = False) -> None:
+    configure_runtime(settings)
     client = await connect(settings)
     acts = build_activities(settings, api=NullApiClient() if no_api else None)
     worker = build_worker(client, settings, acts)
