@@ -1,15 +1,16 @@
-"""Builds the ProviderSet from settings, one adapter per capability.
+"""Builds the ProviderSet from settings, one adapter (or routed chain) per capability.
 
-Adapters are selected by name (``PROVIDER_LLM=anthropic``). Unknown names, or names for
-capabilities whose real adapter is not built yet, fail fast at startup with a clear message
-rather than mid-job. Health-aware routing across several adapters per capability arrives with
-the image and video providers.
+Adapters are selected by name (``PROVIDER_LLM=anthropic``, ``PROVIDER_IMAGE=fal``). Unknown
+names, or names for capabilities whose real adapter is not built yet, fail fast at startup
+with a clear message rather than mid-job. Image and video run through fallback chains with a
+shared circuit breaker (Redis-backed when REDIS_URL is set).
 """
 
 from __future__ import annotations
 
 import logging
 import os
+from typing import TYPE_CHECKING
 
 from avg_workers.config import Settings
 from avg_workers.ffmpeg import FFmpeg
@@ -30,6 +31,17 @@ from avg_workers.providers.mock import (
     MockSpeech,
     MockVideo,
 )
+from avg_workers.providers.routing import (
+    BreakerStore,
+    CircuitBreaker,
+    MemoryBreakerStore,
+    RedisBreakerStore,
+    RoutedImageProvider,
+    RoutedVideoProvider,
+)
+
+if TYPE_CHECKING:
+    from avg_workers.providers.fal import FalClient
 
 log = logging.getLogger(__name__)
 
@@ -44,82 +56,141 @@ def _unsupported(capability: str, name: str, available: list[str]) -> ProviderCo
     )
 
 
-def build_llm(settings: Settings) -> LLMProvider:
-    name = settings.provider_for("llm")
-    if name == "mock":
-        return MockLLM()
-    if name == "anthropic":
-        from anthropic import AsyncAnthropic
+class ProviderFactory:
+    """Holds shared clients (fal, breaker) so every capability reuses one connection pool."""
 
-        from avg_workers.providers.anthropic_llm import AnthropicLLM
+    def __init__(self, settings: Settings, ffmpeg: FFmpeg) -> None:
+        self.settings = settings
+        self.ffmpeg = ffmpeg
+        self._fal: FalClient | None = None
+        self._breaker: CircuitBreaker | None = None
 
-        if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
-            log.warning(
-                "PROVIDER_LLM=anthropic but ANTHROPIC_API_KEY is unset; "
-                "relying on an `ant auth login` profile"
+    # ---- shared -------------------------------------------------------------------
+
+    def fal(self) -> FalClient:
+        if self._fal is None:
+            from avg_workers.providers.fal import FalClient
+
+            if not self.settings.fal_api_key:
+                raise ProviderConfigError("FAL_KEY is required for fal image/video providers")
+            self._fal = FalClient(self.settings.fal_api_key)
+        return self._fal
+
+    def breaker(self) -> CircuitBreaker:
+        if self._breaker is None:
+            store: BreakerStore
+            if self.settings.redis_url:
+                import redis.asyncio as aioredis
+
+                store = RedisBreakerStore(
+                    aioredis.from_url(self.settings.redis_url)  # type: ignore[no-untyped-call]
+                )
+            else:
+                store = MemoryBreakerStore()
+            self._breaker = CircuitBreaker(
+                store,
+                failure_threshold=self.settings.breaker_failure_threshold,
+                window_sec=self.settings.breaker_window_sec,
+                open_sec=self.settings.breaker_open_sec,
             )
-        client = AsyncAnthropic(max_retries=3, timeout=180.0)
-        return AnthropicLLM(
-            client,
-            story_model=settings.anthropic_story_model,
-            critic_model=settings.anthropic_critic_model,
-            effort=settings.anthropic_effort,
-            critique=settings.story_critique,
-            critique_threshold=settings.story_critique_threshold,
-        )
-    raise _unsupported("llm", name, ["mock", "anthropic"])
+        return self._breaker
 
+    # ---- capabilities -------------------------------------------------------------
 
-def build_image(settings: Settings) -> ImageProvider:
-    name = settings.provider_for("image")
-    if name == "mock":
-        return MockImage()
-    raise _unsupported("image", name, ["mock"])
+    def llm(self) -> LLMProvider:
+        name = self.settings.provider_for("llm")
+        if name == "mock":
+            return MockLLM()
+        if name == "anthropic":
+            from anthropic import AsyncAnthropic
 
+            from avg_workers.providers.anthropic_llm import AnthropicLLM
 
-def build_video(settings: Settings, ffmpeg: FFmpeg, tier: str) -> VideoProvider:
-    name = settings.provider_for("video")
-    if name == "mock":
-        return MockVideo(ffmpeg, f"mock-video-{tier}")
-    raise _unsupported("video", name, ["mock"])
+            if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
+                log.warning(
+                    "PROVIDER_LLM=anthropic but ANTHROPIC_API_KEY is unset; "
+                    "relying on an `ant auth login` profile"
+                )
+            s = self.settings
+            return AnthropicLLM(
+                AsyncAnthropic(max_retries=3, timeout=180.0),
+                story_model=s.anthropic_story_model,
+                critic_model=s.anthropic_critic_model,
+                effort=s.anthropic_effort,
+                critique=s.story_critique,
+                critique_threshold=s.story_critique_threshold,
+            )
+        raise _unsupported("llm", name, ["mock", "anthropic"])
 
+    def image(self) -> ImageProvider:
+        name = self.settings.provider_for("image")
+        if name == "mock":
+            return MockImage()
+        if name == "fal":
+            from avg_workers.providers.fal import FalImage
 
-def build_speech(settings: Settings) -> SpeechProvider:
-    name = settings.provider_for("speech")
-    if name == "mock":
-        return MockSpeech()
-    raise _unsupported("speech", name, ["mock"])
+            primary = FalImage(
+                self.fal(),
+                model=self.settings.fal_image_model,
+                reference_model=self.settings.fal_image_reference_model or None,
+            )
+            return RoutedImageProvider([primary], self.breaker())
+        raise _unsupported("image", name, ["mock", "fal"])
 
+    def video(self, tier: str) -> VideoProvider:
+        name = self.settings.provider_for("video")
+        if name == "mock":
+            return MockVideo(self.ffmpeg, f"mock-video-{tier}")
+        if name == "fal":
+            from avg_workers.providers.fal import FalVideo
 
-def build_music(settings: Settings) -> MusicProvider:
-    name = settings.provider_for("music")
-    if name == "mock":
-        return MockMusic()
-    raise _unsupported("music", name, ["mock"])
+            chain_spec = (
+                self.settings.video_chain_premium
+                if tier == "premium"
+                else self.settings.video_chain_standard
+            )
+            chain: list[VideoProvider] = [
+                FalVideo(self.fal(), m.strip()) for m in chain_spec.split(",") if m.strip()
+            ]
+            return RoutedVideoProvider(chain, self.breaker())
+        raise _unsupported("video", name, ["mock", "fal"])
 
+    def speech(self) -> SpeechProvider:
+        name = self.settings.provider_for("speech")
+        if name == "mock":
+            return MockSpeech()
+        raise _unsupported("speech", name, ["mock"])
 
-def build_sfx(settings: Settings) -> SfxProvider:
-    name = settings.provider_for("sfx")
-    if name == "mock":
-        return MockSfx()
-    raise _unsupported("sfx", name, ["mock"])
+    def music(self) -> MusicProvider:
+        name = self.settings.provider_for("music")
+        if name == "mock":
+            return MockMusic()
+        raise _unsupported("music", name, ["mock"])
+
+    def sfx(self) -> SfxProvider:
+        name = self.settings.provider_for("sfx")
+        if name == "mock":
+            return MockSfx()
+        raise _unsupported("sfx", name, ["mock"])
 
 
 def build_providers(settings: Settings, ffmpeg: FFmpeg) -> ProviderSet:
+    f = ProviderFactory(settings, ffmpeg)
     providers = ProviderSet(
-        llm=build_llm(settings),
-        image=build_image(settings),
-        video_standard=build_video(settings, ffmpeg, "standard"),
-        video_premium=build_video(settings, ffmpeg, "premium"),
-        speech=build_speech(settings),
-        music=build_music(settings),
-        sfx=build_sfx(settings),
+        llm=f.llm(),
+        image=f.image(),
+        video_standard=f.video("standard"),
+        video_premium=f.video("premium"),
+        speech=f.speech(),
+        music=f.music(),
+        sfx=f.sfx(),
     )
     log.info(
-        "providers: llm=%s image=%s video=%s speech=%s music=%s sfx=%s",
+        "providers: llm=%s image=%s video=%s/%s speech=%s music=%s sfx=%s",
         providers.llm.info.model,
         providers.image.info.model,
         providers.video_standard.info.model,
+        providers.video_premium.info.model,
         providers.speech.info.model,
         providers.music.info.model,
         providers.sfx.info.model,

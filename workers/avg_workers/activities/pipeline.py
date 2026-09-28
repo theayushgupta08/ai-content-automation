@@ -230,23 +230,32 @@ class PipelineActivities:
             )
             if not self.storage.exists(key):
                 out = self.storage.staging_path(key)
-                await self.providers.image.generate(
-                    ImageRequest(
-                        prompt=(
-                            f"{inp.plan.style.prefix or ''} character sheet, front view: "
-                            f"{ch.visualDescriptor}"
+                with _provider_errors("characters"):
+                    image = await self.providers.image.generate(
+                        ImageRequest(
+                            prompt=(
+                                f"{inp.plan.style.prefix or ''} character sheet, front view: "
+                                f"{ch.visualDescriptor}"
+                            ),
+                            negative_prompt=inp.plan.style.negative,
+                            width=side,
+                            height=side,
+                            seed=_seed_for(inp.seed, "sheet", ch.id),
+                            label=f"{ch.name}\n{ch.visualDescriptor}",
                         ),
-                        negative_prompt=inp.plan.style.negative,
-                        width=side,
-                        height=side,
-                        seed=_seed_for(inp.seed, "sheet", ch.id),
-                        label=f"{ch.name}\n{ch.visualDescriptor}",
-                    ),
-                    out,
-                )
+                        out,
+                    )
                 self.storage.commit(key, "image/png")
+                await self._artifact(
+                    inp.ctx,
+                    "character_sheet",
+                    key,
+                    characterId=ch.id,
+                    provider=image.provider.name,
+                    model=image.provider.model,
+                    costUsd=image.cost_usd,
+                )
             keys[ch.id] = key
-            await self._artifact(inp.ctx, "character_sheet", key, characterId=ch.id)
         return CharacterSheetsResult(sheetKeys=keys)
 
     @activity.defn(name=names.GENERATE_KEYFRAMES)
@@ -264,21 +273,30 @@ class PipelineActivities:
             seed = _seed_for(inp.seed, scene.index, kf.position.value, inp.attempt)
             prompt = ", ".join(filter(None, [inp.plan.style.prefix, kf.prompt, *descriptors]))
             out = self.storage.staging_path(key)
-            await self.providers.image.generate(
-                ImageRequest(
-                    prompt=prompt,
-                    negative_prompt=inp.plan.style.negative,
-                    width=inp.spec.width,
-                    height=inp.spec.height,
-                    seed=seed,
-                    reference_paths=refs,
-                    label=f"Scene {scene.index + 1}\n{scene.location}\n{kf.prompt[:120]}",
-                ),
-                out,
-            )
+            with _provider_errors("keyframes"):
+                image = await self.providers.image.generate(
+                    ImageRequest(
+                        prompt=prompt,
+                        negative_prompt=inp.plan.style.negative,
+                        width=inp.spec.width,
+                        height=inp.spec.height,
+                        seed=seed,
+                        reference_paths=refs,
+                        label=f"Scene {scene.index + 1}\n{scene.location}\n{kf.prompt[:120]}",
+                    ),
+                    out,
+                )
             self.storage.commit(key, "image/png")
             await self._artifact(
-                inp.ctx, "keyframe", key, sceneIndex=scene.index, seed=seed, prompt=prompt
+                inp.ctx,
+                "keyframe",
+                key,
+                sceneIndex=scene.index,
+                seed=image.seed,
+                prompt=prompt,
+                provider=image.provider.name,
+                model=image.provider.model,
+                costUsd=image.cost_usd,
             )
             result_keys.append(key)
         return KeyframesResult(
@@ -298,23 +316,24 @@ class PipelineActivities:
         clip_key = f"{inp.ctx.prefix}/scenes/{scene.index}/clip.mp4"
         raw_out = self.storage.staging_path(raw_key)
         activity.heartbeat("submitting")
-        result = await provider.image_to_video(
-            ClipRequest(
-                first_frame=self.storage.local_path(inp.keyframes.startKey),
-                last_frame=self.storage.local_path(inp.keyframes.endKey)
-                if inp.keyframes.endKey
-                else None,
-                motion_prompt=scene.motion.subject,
-                camera=scene.motion.camera,
-                intensity=scene.motion.intensity,
-                duration_sec=scene.durationSec,
-                fps=inp.spec.fps,
-                width=inp.spec.width,
-                height=inp.spec.height,
-                seed=_seed_for(inp.seed, "clip", scene.index, inp.attempt),
-            ),
-            raw_out,
-        )
+        with _provider_errors("video"):
+            result = await provider.image_to_video(
+                ClipRequest(
+                    first_frame=self.storage.local_path(inp.keyframes.startKey),
+                    last_frame=self.storage.local_path(inp.keyframes.endKey)
+                    if inp.keyframes.endKey
+                    else None,
+                    motion_prompt=scene.motion.subject,
+                    camera=scene.motion.camera,
+                    intensity=scene.motion.intensity,
+                    duration_sec=scene.durationSec,
+                    fps=inp.spec.fps,
+                    width=inp.spec.width,
+                    height=inp.spec.height,
+                    seed=_seed_for(inp.seed, "clip", scene.index, inp.attempt),
+                ),
+                raw_out,
+            )
         self.storage.commit(raw_key, "video/mp4")
         activity.heartbeat("normalising")
         clip_out = self.storage.staging_path(clip_key)
@@ -332,6 +351,7 @@ class PipelineActivities:
             model=result.provider.model,
             seed=result.seed,
             attempt=inp.attempt,
+            costUsd=result.cost_usd,
         )
         return ClipOutput(
             rawKey=raw_key,

@@ -64,6 +64,37 @@ class Settings:
         default_factory=lambda: int(_env("STORY_CRITIQUE_THRESHOLD", "7"))
     )
 
+    # fal.ai (images + video). Chains are comma-separated model ids tried in order.
+    fal_api_key: str = field(default_factory=lambda: _env("FAL_KEY", ""))
+    fal_image_model: str = field(
+        default_factory=lambda: _env("FAL_IMAGE_MODEL", "fal-ai/flux-pro/v1.1")
+    )
+    fal_image_reference_model: str = field(
+        default_factory=lambda: _env("FAL_IMAGE_REFERENCE_MODEL", "fal-ai/flux-pro/kontext")
+    )
+    video_chain_standard: str = field(
+        default_factory=lambda: _env(
+            "VIDEO_CHAIN_STANDARD",
+            "fal-ai/kling-video/v2.1/standard/image-to-video,fal-ai/wan-i2v",
+        )
+    )
+    video_chain_premium: str = field(
+        default_factory=lambda: _env(
+            "VIDEO_CHAIN_PREMIUM",
+            "fal-ai/kling-video/v2.1/pro/image-to-video,"
+            "fal-ai/kling-video/v2.1/standard/image-to-video",
+        )
+    )
+    # Circuit breaker: open after N failures within the window, stay open for open_sec.
+    breaker_failure_threshold: int = field(
+        default_factory=lambda: int(_env("BREAKER_FAILURE_THRESHOLD", "5"))
+    )
+    breaker_window_sec: float = field(
+        default_factory=lambda: float(_env("BREAKER_WINDOW_SEC", "60"))
+    )
+    breaker_open_sec: float = field(default_factory=lambda: float(_env("BREAKER_OPEN_SEC", "60")))
+    redis_url: str = field(default_factory=lambda: _env("REDIS_URL", ""))
+
     ffmpeg_bin: str = field(default_factory=lambda: _env("FFMPEG_BIN", "ffmpeg"))
     ffprobe_bin: str = field(default_factory=lambda: _env("FFPROBE_BIN", "ffprobe"))
 
@@ -87,8 +118,8 @@ class Settings:
 # First real adapter per capability; capabilities without one stay on mocks until built.
 LIVE_DEFAULTS: dict[str, str] = {
     "llm": "anthropic",
-    "image": "mock",
-    "video": "mock",
+    "image": "fal",
+    "video": "fal",
     "speech": "mock",
     "music": "mock",
     "sfx": "mock",
