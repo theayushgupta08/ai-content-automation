@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://avg.dev/schemas/job-input.schema.json",
+  "title": "JobInput",
+  "description": "Normalised Stage 1 input: what the user asked for.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["prompt", "characters", "options"],
+  "properties": {
+    "prompt": { "type": "string", "minLength": 10, "maxLength": 300 },
+    "characters": {
+      "type": "array",
+      "maxItems": 4,
+      "items": { "$ref": "#/$defs/CharacterRef" }
+    },
+    "options": { "$ref": "#/$defs/JobOptions" },
+    "projectId": { "type": "string" }
+  },
+  "$defs": {
+    "CharacterRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "characterId": { "type": "string" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 600 },
+        "role": {
+          "type": "string",
+          "enum": ["protagonist", "antagonist", "supporting", "narrator"]
+        },
+        "voiceId": { "type": "string" }
+      },
+      "anyOf": [{ "required": ["characterId"] }, { "required": ["name", "description"] }]
+    },
+    "JobOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["style", "aspectRatio", "targetDurationSec", "language", "mode", "videoTier"],
+      "properties": {
+        "style": { "type": "string", "minLength": 1 },
+        "aspectRatio": { "type": "string", "enum": ["9:16", "16:9", "1:1"] },
+        "targetDurationSec": { "type": "integer", "minimum": 10, "maximum": 180 },
+        "language": { "type": "string", "pattern": "^[a-z]{2}(-[A-Z]{2})?$" },
+        "tone": { "type": "string", "maxLength": 60 },
+        "mode": { "type": "string", "enum": ["auto", "director"] },
+        "videoTier": { "type": "string", "enum": ["standard", "premium"] },
+        "subtitles": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "burnIn": { "type": "boolean" },
+            "style": { "type": "string", "enum": ["bold_center", "lower_third", "none"] }
+          }
+        },
+        "seed": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

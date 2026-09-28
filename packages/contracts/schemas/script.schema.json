@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://avg.dev/schemas/script.schema.json",
+  "title": "Script",
+  "description": "Stage 2 output before shot breakdown: premise, characters and a scene-by-scene script.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "title", "logline", "premise", "characters", "scenes"],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "logline": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "premise": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["goal", "conflict", "resolution", "emotionalArc"],
+      "properties": {
+        "goal": { "type": "string" },
+        "conflict": { "type": "string" },
+        "resolution": { "type": "string" },
+        "emotionalArc": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+      }
+    },
+    "characters": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ScriptCharacter" }
+    },
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 40,
+      "items": { "$ref": "#/$defs/ScriptScene" }
+    },
+    "meta": { "$ref": "#/$defs/GenerationMeta" }
+  },
+  "$defs": {
+    "ScriptCharacter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "visualDescriptor"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "visualDescriptor": {
+          "type": "string",
+          "description": "Canonical appearance injected into every visual prompt."
+        },
+        "voiceId": { "type": "string" },
+        "personality": { "type": "string" }
+      }
+    },
+    "DialogueLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["speaker", "text"],
+      "properties": {
+        "speaker": { "type": "string", "description": "Character id, or \"narrator\"." },
+        "text": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "emotion": { "type": "string" }
+      }
+    },
+    "ScriptScene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "heading", "action", "characters", "lines", "beat"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "heading": { "type": "string", "description": "e.g. EXT. LIGHTHOUSE GALLERY - DUSK" },
+        "action": { "type": "string" },
+        "characters": { "type": "array", "items": { "type": "string" } },
+        "lines": { "type": "array", "items": { "$ref": "#/$defs/DialogueLine" } },
+        "beat": { "type": "string", "description": "Emotional beat this scene lands." }
+      }
+    },
+    "GenerationMeta": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "provider": { "type": "string" },
+        "model": { "type": "string" },
+        "promptVersion": { "type": "string" },
+        "seed": { "type": "integer" }
+      }
+    }
+  }
+}

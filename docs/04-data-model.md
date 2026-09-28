@@ -388,21 +388,21 @@ create table webhook_deliveries (
 
 ## 3. Invariants and enforcement
 
-| Invariant | Enforcement |
-|-----------|-------------|
-| Credit balance never negative | `credit_balances.available >= 0` check; holds placed in a serialisable transaction with `select ... for update` on `credit_balances` |
-| Ledger is append-only | No UPDATE/DELETE grants for the app role; trigger raises on attempt |
-| One active subscription per workspace | Partial unique index |
-| Job cost settles exactly once | `idempotency_key = job_id || ':settle'` on ledger row |
-| Artifact paths are tenant-scoped | Storage key must start with `workspaces/{workspace_id}/`; validated in API and IAM policy conditions |
-| Cross-tenant reads impossible | RLS: `using (workspace_id = current_setting('app.workspace_id')::uuid)` on all tenant tables; API sets the GUC per request |
+| Invariant                             | Enforcement                                                                                                                          |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Credit balance never negative         | `credit_balances.available >= 0` check; holds placed in a serialisable transaction with `select ... for update` on `credit_balances` |
+| Ledger is append-only                 | No UPDATE/DELETE grants for the app role; trigger raises on attempt                                                                  |
+| One active subscription per workspace | Partial unique index                                                                                                                 |
+| Job cost settles exactly once         | `idempotency_key = job_id                                                                                                            |     | ':settle'` on ledger row |
+| Artifact paths are tenant-scoped      | Storage key must start with `workspaces/{workspace_id}/`; validated in API and IAM policy conditions                                 |
+| Cross-tenant reads impossible         | RLS: `using (workspace_id = current_setting('app.workspace_id')::uuid)` on all tenant tables; API sets the GUC per request           |
 
 ## 4. Retention
 
-| Data | Retention |
-|------|-----------|
-| Final outputs, character sheets | Lifetime of the workspace; 30 days after cancellation, then deleted |
-| Intermediate artifacts (raw clips, per-line WAV) | 30 days (S3 lifecycle) |
-| `job_events`, `provider_calls` | 13 months in Postgres, then archived to Parquet in S3 |
-| Moderation results | 2 years (abuse investigations) |
-| Deleted characters with likeness consent | Hard delete within 30 days of request |
+| Data                                             | Retention                                                           |
+| ------------------------------------------------ | ------------------------------------------------------------------- |
+| Final outputs, character sheets                  | Lifetime of the workspace; 30 days after cancellation, then deleted |
+| Intermediate artifacts (raw clips, per-line WAV) | 30 days (S3 lifecycle)                                              |
+| `job_events`, `provider_calls`                   | 13 months in Postgres, then archived to Parquet in S3               |
+| Moderation results                               | 2 years (abuse investigations)                                      |
+| Deleted characters with likeness consent         | Hard delete within 30 days of request                               |

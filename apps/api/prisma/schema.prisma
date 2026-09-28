@@ -1,0 +1,178 @@
+// Phase 0 schema: identity, tenancy, jobs and pipeline state.
+// Billing (plans, subscriptions, ledger), characters, voices and webhooks follow in Phase 1
+// per docs/04-data-model.md.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         String   @id @default(uuid()) @db.Uuid
+  externalId String   @unique @map("external_id")
+  email      String   @unique
+  name       String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  memberships WorkspaceMember[]
+  jobs        VideoJob[]
+
+  @@map("users")
+}
+
+model Workspace {
+  id        String   @id @default(uuid()) @db.Uuid
+  slug      String   @unique
+  name      String
+  ownerId   String   @map("owner_id") @db.Uuid
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  members WorkspaceMember[]
+  jobs    VideoJob[]
+
+  @@map("workspaces")
+}
+
+enum MemberRole {
+  owner
+  admin
+  editor
+  viewer
+}
+
+model WorkspaceMember {
+  workspaceId String     @map("workspace_id") @db.Uuid
+  userId      String     @map("user_id") @db.Uuid
+  role        MemberRole @default(editor)
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+enum JobStatus {
+  queued
+  running
+  awaiting_approval
+  completed
+  failed
+  canceled
+  needs_review
+}
+
+enum JobStage {
+  moderation
+  story
+  characters
+  keyframes
+  video
+  audio
+  edit
+  final
+}
+
+model VideoJob {
+  id                 String    @id @default(uuid()) @db.Uuid
+  workspaceId        String    @map("workspace_id") @db.Uuid
+  createdBy          String    @map("created_by") @db.Uuid
+  status             JobStatus @default(queued)
+  currentStage       JobStage? @map("current_stage")
+  /// Normalised JobInput contract (prompt, characters, options).
+  input              Json
+  pipelineVersion    String    @default("v0") @map("pipeline_version")
+  temporalWorkflowId String?   @unique @map("temporal_workflow_id")
+  title              String?
+  durationSec        Float?    @map("duration_sec")
+  sceneCount         Int?      @map("scene_count")
+  estimatedCredits   Int       @map("estimated_credits")
+  actualCredits      Int?      @map("actual_credits")
+  creditsHeld        Int       @default(0) @map("credits_held")
+  /// Storage keys of deliverables: {mp4Key, previewKey, srtKey, vttKey, thumbKey, posterKey}.
+  output             Json?
+  flags              String[]  @default([])
+  error              Json?
+  startedAt          DateTime? @map("started_at")
+  completedAt        DateTime? @map("completed_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id])
+  creator   User       @relation(fields: [createdBy], references: [id])
+  scenes    Scene[]
+  artifacts Artifact[]
+  events    JobEvent[]
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([status])
+  @@map("video_jobs")
+}
+
+enum SceneStatus {
+  pending
+  keyframes
+  video
+  audio
+  done
+  failed
+  fallback
+}
+
+model Scene {
+  id            String      @id @default(uuid()) @db.Uuid
+  jobId         String      @map("job_id") @db.Uuid
+  idx           Int
+  status        SceneStatus @default(pending)
+  plan          Json?
+  plannedSec    Float?      @map("planned_sec")
+  actualSec     Float?      @map("actual_sec")
+  attempts      Json        @default("{}")
+  providerVideo String?     @map("provider_video")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  job VideoJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, idx])
+  @@map("scenes")
+}
+
+model Artifact {
+  id          String   @id @default(uuid()) @db.Uuid
+  jobId       String   @map("job_id") @db.Uuid
+  sceneIndex  Int?     @map("scene_index")
+  kind        String
+  storageKey  String   @map("storage_key")
+  contentType String?  @map("content_type")
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  job VideoJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, storageKey])
+  @@index([jobId, kind])
+  @@map("artifacts")
+}
+
+model JobEvent {
+  id        BigInt   @id @default(autoincrement())
+  jobId     String   @map("job_id") @db.Uuid
+  seq       Int
+  type      String
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  job VideoJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, seq])
+  @@map("job_events")
+}

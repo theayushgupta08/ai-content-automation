@@ -51,35 +51,35 @@
 
 ## 2. Services
 
-| Service | Language / framework | Responsibility | Scaling |
-|---------|---------------------|----------------|---------|
-| `web` | Next.js 15, React 19, Tailwind, shadcn/ui | Marketing site, authenticated dashboard, job wizard, progress UI, player | Vercel or 2–4 pods behind ingress |
-| `api` | NestJS 11, TypeScript, Prisma | REST + SSE control plane. Owns all DB writes except worker artifact records. Starts/signals Temporal workflows. | HPA on CPU/RPS, 3+ replicas |
-| `orchestrator` | Temporal (Cloud or self-hosted) | Durable execution of `VideoJobWorkflow`. Retries, timeouts, heartbeats, signals (approve/cancel), child workflows per scene. | Managed |
-| `worker-story` | Python, Temporal SDK | LLM activities: story engine, prompt compilation, QA critiques | CPU, KEDA on queue depth |
-| `worker-image` | Python | Image generation via adapters, consistency scoring, upscaling | CPU (API-backed) or GPU pool (self-hosted) |
-| `worker-video` | Python | Image-to-video via adapters, clip validation | CPU (API-backed) or GPU pool |
-| `worker-audio` | Python | TTS, music, SFX, loudness normalisation, alignment | CPU |
-| `worker-edit` | Python + FFmpeg 7 (+ Remotion optional) | Timeline assembly, subtitles, mixing, encoding, thumbnails | CPU-heavy pods, 4–8 vCPU |
-| `worker-qa` | Python (+ small vision model) | Automated quality gates: NSFW, face/character similarity, black-frame, A/V sync | CPU or shared GPU |
-| `billing` | Module inside `api` + Stripe webhooks | Subscriptions, credit ledger, invoices, dunning | — |
-| `notifier` | Module inside `api` | Email (Postmark), in-app, webhooks to customers | — |
-| `media-gateway` | Cloudflare Worker or S3 presign in `api` | Signed, time-limited URLs; range requests for player | Edge |
+| Service         | Language / framework                      | Responsibility                                                                                                               | Scaling                                    |
+| --------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `web`           | Next.js 15, React 19, Tailwind, shadcn/ui | Marketing site, authenticated dashboard, job wizard, progress UI, player                                                     | Vercel or 2–4 pods behind ingress          |
+| `api`           | NestJS 11, TypeScript, Prisma             | REST + SSE control plane. Owns all DB writes except worker artifact records. Starts/signals Temporal workflows.              | HPA on CPU/RPS, 3+ replicas                |
+| `orchestrator`  | Temporal (Cloud or self-hosted)           | Durable execution of `VideoJobWorkflow`. Retries, timeouts, heartbeats, signals (approve/cancel), child workflows per scene. | Managed                                    |
+| `worker-story`  | Python, Temporal SDK                      | LLM activities: story engine, prompt compilation, QA critiques                                                               | CPU, KEDA on queue depth                   |
+| `worker-image`  | Python                                    | Image generation via adapters, consistency scoring, upscaling                                                                | CPU (API-backed) or GPU pool (self-hosted) |
+| `worker-video`  | Python                                    | Image-to-video via adapters, clip validation                                                                                 | CPU (API-backed) or GPU pool               |
+| `worker-audio`  | Python                                    | TTS, music, SFX, loudness normalisation, alignment                                                                           | CPU                                        |
+| `worker-edit`   | Python + FFmpeg 7 (+ Remotion optional)   | Timeline assembly, subtitles, mixing, encoding, thumbnails                                                                   | CPU-heavy pods, 4–8 vCPU                   |
+| `worker-qa`     | Python (+ small vision model)             | Automated quality gates: NSFW, face/character similarity, black-frame, A/V sync                                              | CPU or shared GPU                          |
+| `billing`       | Module inside `api` + Stripe webhooks     | Subscriptions, credit ledger, invoices, dunning                                                                              | —                                          |
+| `notifier`      | Module inside `api`                       | Email (Postmark), in-app, webhooks to customers                                                                              | —                                          |
+| `media-gateway` | Cloudflare Worker or S3 presign in `api`  | Signed, time-limited URLs; range requests for player                                                                         | Edge                                       |
 
 ## 3. Why Temporal for orchestration
 
 A video job is a 5–30 minute, 7-stage DAG with dozens of external calls, any of which can
 time out, rate-limit, or return garbage. Requirements the orchestrator must satisfy:
 
-* **Durability:** worker pod dies mid-stage → the job resumes from the last completed activity,
+- **Durability:** worker pod dies mid-stage → the job resumes from the last completed activity,
   not from scratch.
-* **Per-activity retry policies:** an LLM call retries 3× with backoff; a $2 video render
+- **Per-activity retry policies:** an LLM call retries 3× with backoff; a $2 video render
   retries once, then falls back to a cheaper provider.
-* **Fan-out / fan-in:** 8–15 scenes rendered in parallel with bounded concurrency per provider.
-* **Human-in-the-loop:** director mode waits on a signal for hours without holding resources.
-* **Compensation:** on cancel or hard failure, refund unspent credits and clean temp artifacts.
-* **Versioning:** deploy a new pipeline version while old jobs finish on the old code path.
-* **Visibility:** every job's full history is queryable for support and debugging.
+- **Fan-out / fan-in:** 8–15 scenes rendered in parallel with bounded concurrency per provider.
+- **Human-in-the-loop:** director mode waits on a signal for hours without holding resources.
+- **Compensation:** on cancel or hard failure, refund unspent credits and clean temp artifacts.
+- **Versioning:** deploy a new pipeline version while old jobs finish on the old code path.
+- **Visibility:** every job's full history is queryable for support and debugging.
 
 Alternatives considered: Celery/BullMQ (no durable state machine; would require re-implementing
 retries, fan-in, and resumption by hand), Airflow/Prefect (batch-oriented, poor fit for
@@ -151,26 +151,26 @@ cost (`provider_calls` table) so we can audit, replay, and do margin analysis.
 
 ## 5. Data flow for one job (auto mode, 60 s, 9:16)
 
-| Step | Input | Output artifact | Typical latency | Typical cost |
-|------|-------|-----------------|-----------------|--------------|
-| Estimate + reserve | prompt, options | `credit_holds` row | < 100 ms | — |
-| Moderation | prompt, character text | pass/fail + reasons | 300 ms | $0.001 |
-| Script | prompt, style, length, characters | `script.json` (title, logline, 8–12 scenes, dialogue, beats) | 20–40 s | $0.03 |
-| Character sheets | character descriptions + style | 1 sheet (4 views) per character + CLIP embedding | 30–60 s | $0.15 |
-| Keyframes | scene visual prompts + character refs | 1–2 images per scene (≈ 16) | 60–90 s parallel | $0.60 |
-| Clips | keyframes + motion prompts | ≈ 10 × 5–6 s clips | 3–8 min parallel | $2.50–6.00 |
-| Voice | dialogue + narration lines | ≈ 25 audio files + word timestamps | 30 s | $0.20 |
-| Music + SFX | mood, duration, per-scene cues | 1 track + ≈ 10 SFX | 40 s | $0.15 |
-| Edit | EDL + all assets | `final.mp4`, `.srt`, `.vtt`, `thumb.jpg` | 30–60 s | $0.02 compute |
-| **Total** | | | **~6–12 min** | **~$3.70–7.20** |
+| Step               | Input                                 | Output artifact                                              | Typical latency  | Typical cost    |
+| ------------------ | ------------------------------------- | ------------------------------------------------------------ | ---------------- | --------------- |
+| Estimate + reserve | prompt, options                       | `credit_holds` row                                           | < 100 ms         | —               |
+| Moderation         | prompt, character text                | pass/fail + reasons                                          | 300 ms           | $0.001          |
+| Script             | prompt, style, length, characters     | `script.json` (title, logline, 8–12 scenes, dialogue, beats) | 20–40 s          | $0.03           |
+| Character sheets   | character descriptions + style        | 1 sheet (4 views) per character + CLIP embedding             | 30–60 s          | $0.15           |
+| Keyframes          | scene visual prompts + character refs | 1–2 images per scene (≈ 16)                                  | 60–90 s parallel | $0.60           |
+| Clips              | keyframes + motion prompts            | ≈ 10 × 5–6 s clips                                           | 3–8 min parallel | $2.50–6.00      |
+| Voice              | dialogue + narration lines            | ≈ 25 audio files + word timestamps                           | 30 s             | $0.20           |
+| Music + SFX        | mood, duration, per-scene cues        | 1 track + ≈ 10 SFX                                           | 40 s             | $0.15           |
+| Edit               | EDL + all assets                      | `final.mp4`, `.srt`, `.vtt`, `thumb.jpg`                     | 30–60 s          | $0.02 compute   |
+| **Total**          |                                       |                                                              | **~6–12 min**    | **~$3.70–7.20** |
 
 ## 6. Realtime progress
 
-* Workers publish stage events to Redis Pub/Sub (`job:{id}:events`) and write to the
+- Workers publish stage events to Redis Pub/Sub (`job:{id}:events`) and write to the
   `job_events` table.
-* `api` exposes `GET /v1/jobs/{id}/events` as Server-Sent Events, replaying from
+- `api` exposes `GET /v1/jobs/{id}/events` as Server-Sent Events, replaying from
   `job_events` on connect, then streaming from Redis.
-* Preview artifacts (script text, character sheet thumbnails, scene thumbnails) are pushed as
+- Preview artifacts (script text, character sheet thumbnails, scene thumbnails) are pushed as
   they are produced so the progress screen fills in progressively.
 
 ## 7. Storage layout
@@ -206,21 +206,21 @@ character sheets are retained while the account is active (configurable per plan
 
 ## 8. Environments
 
-| Env | Purpose | Providers | Data |
-|-----|---------|-----------|------|
-| `local` | Developer laptops, docker-compose (Postgres, Redis, Temporal dev server, MinIO) | Mocked adapters returning fixture assets; optional real keys | Seeded |
-| `dev` | Shared integration, auto-deployed from `main` | Real providers, low-cost models, hard budget cap | Synthetic |
-| `staging` | Release candidates, load tests, Stripe test mode | Real providers | Anonymised copy |
-| `prod` | Customers | Real providers, full routing | Real |
+| Env       | Purpose                                                                         | Providers                                                    | Data            |
+| --------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------ | --------------- |
+| `local`   | Developer laptops, docker-compose (Postgres, Redis, Temporal dev server, MinIO) | Mocked adapters returning fixture assets; optional real keys | Seeded          |
+| `dev`     | Shared integration, auto-deployed from `main`                                   | Real providers, low-cost models, hard budget cap             | Synthetic       |
+| `staging` | Release candidates, load tests, Stripe test mode                                | Real providers                                               | Anonymised copy |
+| `prod`    | Customers                                                                       | Real providers, full routing                                 | Real            |
 
 ## 9. Key non-functional requirements
 
-| Requirement | Target |
-|-------------|--------|
-| Job durability | Zero jobs lost on worker or orchestrator restart |
-| Availability (API + dashboard) | 99.9 % monthly |
-| Pipeline success rate | ≥ 97 % without human intervention |
-| Max concurrent jobs at launch | 200, scaling to 2,000 |
-| Provider outage | Automatic failover within 1 minute, no job failures attributable to a single provider |
-| Data residency | US default; EU region optional in Phase 3 |
-| Cost telemetry | Actual provider cost recorded per stage for 100 % of jobs |
+| Requirement                    | Target                                                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------- |
+| Job durability                 | Zero jobs lost on worker or orchestrator restart                                      |
+| Availability (API + dashboard) | 99.9 % monthly                                                                        |
+| Pipeline success rate          | ≥ 97 % without human intervention                                                     |
+| Max concurrent jobs at launch  | 200, scaling to 2,000                                                                 |
+| Provider outage                | Automatic failover within 1 minute, no job failures attributable to a single provider |
+| Data residency                 | US default; EU region optional in Phase 3                                             |
+| Cost telemetry                 | Actual provider cost recorded per stage for 100 % of jobs                             |

@@ -33,33 +33,33 @@ capacity.
 
 Everything scales on **Temporal task-queue backlog**, not CPU:
 
-| Worker | KEDA trigger | Min / max pods | Pod resources |
-|--------|--------------|----------------|---------------|
-| story | `story` queue backlog > 5 per pod | 2 / 30 | 1 vCPU, 2 GiB |
-| image (API-backed) | backlog > 10 | 2 / 60 | 1 vCPU, 2 GiB |
-| video (API-backed) | backlog > 10 | 2 / 60 | 1 vCPU, 2 GiB (mostly waiting on providers) |
-| audio | backlog > 5 | 2 / 40 | 2 vCPU, 4 GiB |
-| edit | backlog > 2 | 2 / 40 | 4 vCPU, 8 GiB, ephemeral SSD 20 GiB |
-| qa | backlog > 5 | 1 / 20 | 2 vCPU, 4 GiB (+ optional GPU) |
-| gpu-image (self-hosted SDXL/Flux) | backlog > 2 | 0 / 20 | 1× L4/L40S, 8 vCPU, 32 GiB |
-| gpu-video (self-hosted Wan) | backlog > 1 | 0 / 30 | 1× L40S/A100, 16 vCPU, 64 GiB |
+| Worker                            | KEDA trigger                      | Min / max pods | Pod resources                               |
+| --------------------------------- | --------------------------------- | -------------- | ------------------------------------------- |
+| story                             | `story` queue backlog > 5 per pod | 2 / 30         | 1 vCPU, 2 GiB                               |
+| image (API-backed)                | backlog > 10                      | 2 / 60         | 1 vCPU, 2 GiB                               |
+| video (API-backed)                | backlog > 10                      | 2 / 60         | 1 vCPU, 2 GiB (mostly waiting on providers) |
+| audio                             | backlog > 5                       | 2 / 40         | 2 vCPU, 4 GiB                               |
+| edit                              | backlog > 2                       | 2 / 40         | 4 vCPU, 8 GiB, ephemeral SSD 20 GiB         |
+| qa                                | backlog > 5                       | 1 / 20         | 2 vCPU, 4 GiB (+ optional GPU)              |
+| gpu-image (self-hosted SDXL/Flux) | backlog > 2                       | 0 / 20         | 1× L4/L40S, 8 vCPU, 32 GiB                  |
+| gpu-video (self-hosted Wan)       | backlog > 1                       | 0 / 30         | 1× L40S/A100, 16 vCPU, 64 GiB               |
 
 Capacity planning at 2,000 concurrent jobs (~10 scenes each):
 
-* ~20,000 in-flight provider video calls → provider rate-limit contracts are the real
+- ~20,000 in-flight provider video calls → provider rate-limit contracts are the real
   bottleneck, not our compute. Negotiate quotas early and spread across ≥ 3 providers.
-* Edit stage: ~1 min CPU per video → 2,000 jobs/10 min needs ~200 vCPU of edit capacity
+- Edit stage: ~1 min CPU per video → 2,000 jobs/10 min needs ~200 vCPU of edit capacity
   (50 × 4-vCPU pods).
-* Postgres: job/event writes ≈ 100 rows/job → 200k rows per 10 min, well within a single
+- Postgres: job/event writes ≈ 100 rows/job → 200k rows per 10 min, well within a single
   r6g.xlarge; partition `job_events` and `provider_calls` by month.
 
 ## 3. GPU strategy
 
-| Phase | Approach |
-|-------|----------|
-| 1 (launch) | **No self-hosted GPUs.** All generation via hosted APIs. Fastest to ship, zero idle cost. |
-| 2 | Self-host **image** generation (SDXL/Flux on L4) for character sheets and keyframes: predictable, cheap, better reference-conditioning control. Keep video on APIs. |
-| 3 | Self-host **video** (Wan 2.x / LTX) for the standard tier on L40S/A100 spot with on-demand fallback. Hosted APIs remain for premium. Evaluate dedicated capacity (Lambda, CoreWeave, RunPod) vs. AWS. |
+| Phase      | Approach                                                                                                                                                                                              |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1 (launch) | **No self-hosted GPUs.** All generation via hosted APIs. Fastest to ship, zero idle cost.                                                                                                             |
+| 2          | Self-host **image** generation (SDXL/Flux on L4) for character sheets and keyframes: predictable, cheap, better reference-conditioning control. Keep video on APIs.                                   |
+| 3          | Self-host **video** (Wan 2.x / LTX) for the standard tier on L40S/A100 spot with on-demand fallback. Hosted APIs remain for premium. Evaluate dedicated capacity (Lambda, CoreWeave, RunPod) vs. AWS. |
 
 Self-hosted inference runs behind an internal gateway (Ray Serve or vLLM-style batching for
 images, Triton for video) exposed to workers through the same provider adapter interface, so
@@ -67,11 +67,11 @@ the switch is a routing change.
 
 ## 4. Networking and edge
 
-* Cloudflare in front of everything: WAF managed rules, bot fight mode, rate limiting for
+- Cloudflare in front of everything: WAF managed rules, bot fight mode, rate limiting for
   `/v1/jobs` and auth endpoints, Turnstile on signup.
-* Media served from CDN with signed URLs (24 h) generated by the API; origin is S3 with OAC
+- Media served from CDN with signed URLs (24 h) generated by the API; origin is S3 with OAC
   (or R2 to eliminate egress fees, which matter at video scale).
-* Internal services on a private mesh; only ALB ingress is public. Provider egress through
+- Internal services on a private mesh; only ALB ingress is public. Provider egress through
   NAT with fixed IPs (some providers allow-list).
 
 ## 5. CI/CD
@@ -89,30 +89,30 @@ GitHub ── PR ──► CI (GitHub Actions)
         tag vX.Y.Z    ──► ArgoCD sync to staging ──► manual promote ──► prod (canary 10 % → 100 %)
 ```
 
-* Infra in Terraform (modules: network, eks, rds, redis, s3, iam, cloudflare), applied via
+- Infra in Terraform (modules: network, eks, rds, redis, s3, iam, cloudflare), applied via
   Atlantis or Terraform Cloud with plan on PR.
-* Database migrations run as a pre-sync ArgoCD hook; must be backward compatible for one
+- Database migrations run as a pre-sync ArgoCD hook; must be backward compatible for one
   release (expand/contract pattern).
-* Workflow code changes use Temporal versioning; workers are drained (graceful shutdown,
+- Workflow code changes use Temporal versioning; workers are drained (graceful shutdown,
   activity heartbeats) before replacement.
 
 ## 6. Environments and cost guardrails
 
-| Env | Provider budget cap | Notes |
-|-----|---------------------|-------|
-| dev | $50/day hard cap (router refuses when exceeded) | Cheapest models, 15 s max videos |
-| staging | $200/day | Mirrors prod routing |
-| prod | Alert at 120 % of forecast; per-workspace anomaly detection | |
+| Env     | Provider budget cap                                         | Notes                            |
+| ------- | ----------------------------------------------------------- | -------------------------------- |
+| dev     | $50/day hard cap (router refuses when exceeded)             | Cheapest models, 15 s max videos |
+| staging | $200/day                                                    | Mirrors prod routing             |
+| prod    | Alert at 120 % of forecast; per-workspace anomaly detection |                                  |
 
 ## 7. Backup and disaster recovery
 
-| Component | Backup | RPO | RTO |
-|-----------|--------|-----|-----|
-| PostgreSQL | Automated snapshots daily + PITR (WAL), cross-region copy nightly | 5 min | 1 h |
-| S3 media | Versioning + cross-region replication for `output/` and `characters/` | 15 min | 1 h |
-| Temporal | Temporal Cloud handles; self-hosted → Aurora PITR | 5 min | 1 h |
-| Redis | Ephemeral; rebuildable (rate limits reset, idempotency keys lost → accept) | — | 5 min |
-| Secrets | Secrets Manager replication | — | — |
+| Component  | Backup                                                                     | RPO    | RTO   |
+| ---------- | -------------------------------------------------------------------------- | ------ | ----- |
+| PostgreSQL | Automated snapshots daily + PITR (WAL), cross-region copy nightly          | 5 min  | 1 h   |
+| S3 media   | Versioning + cross-region replication for `output/` and `characters/`      | 15 min | 1 h   |
+| Temporal   | Temporal Cloud handles; self-hosted → Aurora PITR                          | 5 min  | 1 h   |
+| Redis      | Ephemeral; rebuildable (rate limits reset, idempotency keys lost → accept) | —      | 5 min |
+| Secrets    | Secrets Manager replication                                                | —      | —     |
 
 Region failover is manual in Phase 1 (documented runbook, quarterly drill); active-passive
 automated failover is a Phase 3 goal alongside EU residency.

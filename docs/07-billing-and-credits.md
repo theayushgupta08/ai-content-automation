@@ -2,11 +2,11 @@
 
 ## 1. Model
 
-* **Subscription** (Stripe Billing) grants a monthly credit allowance.
-* **Credit packs** (one-time Stripe Checkout) top up; never expire while subscribed.
-* **Credits** are the only internal currency. 1 credit ≈ 1 second of finished standard-tier
+- **Subscription** (Stripe Billing) grants a monthly credit allowance.
+- **Credit packs** (one-time Stripe Checkout) top up; never expire while subscribed.
+- **Credits** are the only internal currency. 1 credit ≈ 1 second of finished standard-tier
   video. Multipliers apply for premium options (see 01 §5).
-* All movements are rows in the append-only `credit_ledger`; `credit_balances` is a
+- All movements are rows in the append-only `credit_ledger`; `credit_balances` is a
   materialised view maintained by trigger.
 
 ## 2. Lifecycle of credits in a job
@@ -38,15 +38,15 @@ and follows the same flow (`regen_charge`).
 
 ## 3. Subscription events → ledger
 
-| Stripe event | Action |
-|--------------|--------|
-| `checkout.session.completed` | Create/upgrade subscription row; grant `subscription_grant` credits for the first period |
-| `invoice.paid` (renewal) | Grant new period credits; apply rollover (min(unused, allowance) for plans with rollover) with `expires_at = period_end + 1 month`; expire older rollover via `expiry` row |
-| `invoice.payment_failed` | Status `past_due`; dunning emails (Stripe Smart Retries); jobs still allowed for 7 days |
-| `customer.subscription.updated` (upgrade) | Prorate: grant difference in credits immediately; entitlements switch instantly |
-| `customer.subscription.updated` (downgrade) | Schedule for period end; entitlements switch at renewal |
-| `customer.subscription.deleted` | Status `canceled`; credits usable until period end, then `expiry` row; assets retained 30 days |
-| `charge.refunded` | Manual review; ledger adjustment by support |
+| Stripe event                                | Action                                                                                                                                                                     |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `checkout.session.completed`                | Create/upgrade subscription row; grant `subscription_grant` credits for the first period                                                                                   |
+| `invoice.paid` (renewal)                    | Grant new period credits; apply rollover (min(unused, allowance) for plans with rollover) with `expires_at = period_end + 1 month`; expire older rollover via `expiry` row |
+| `invoice.payment_failed`                    | Status `past_due`; dunning emails (Stripe Smart Retries); jobs still allowed for 7 days                                                                                    |
+| `customer.subscription.updated` (upgrade)   | Prorate: grant difference in credits immediately; entitlements switch instantly                                                                                            |
+| `customer.subscription.updated` (downgrade) | Schedule for period end; entitlements switch at renewal                                                                                                                    |
+| `customer.subscription.deleted`             | Status `canceled`; credits usable until period end, then `expiry` row; assets retained 30 days                                                                             |
+| `charge.refunded`                           | Manual review; ledger adjustment by support                                                                                                                                |
 
 All webhooks: verify signature, dedupe by `event.id` (ledger `idempotency_key`), process in a
 transaction, ack 200 only on commit. Out-of-order events are reconciled by fetching the
@@ -60,9 +60,17 @@ workflow (defence against stale cache):
 
 ```ts
 type Entitlements = {
-  maxDurationSec: number; maxConcurrency: number; maxResolution: '720p'|'1080p'|'4k';
-  premiumVideo: boolean; directorMode: boolean; api: boolean; voiceClone: boolean;
-  seats: number; watermark: boolean; priorityQueue: boolean; rolloverMonths: number;
+  maxDurationSec: number;
+  maxConcurrency: number;
+  maxResolution: '720p' | '1080p' | '4k';
+  premiumVideo: boolean;
+  directorMode: boolean;
+  api: boolean;
+  voiceClone: boolean;
+  seats: number;
+  watermark: boolean;
+  priorityQueue: boolean;
+  rolloverMonths: number;
 };
 ```
 
@@ -71,10 +79,10 @@ capacity and are routed to providers with reserved quota.
 
 ## 5. Free trial and abuse control
 
-* 60 one-time credits on signup, 720p with watermark, max 30 s, no API.
-* Requires verified email + Turnstile; one trial per device fingerprint + payment-method-free.
-* Trial jobs run at lowest priority and always on the standard tier.
-* Velocity checks: > 3 signups from one IP/24 h → manual review queue.
+- 60 one-time credits on signup, 720p with watermark, max 30 s, no API.
+- Requires verified email + Turnstile; one trial per device fingerprint + payment-method-free.
+- Trial jobs run at lowest priority and always on the standard tier.
+- Velocity checks: > 3 signups from one IP/24 h → manual review queue.
 
 ## 6. Metering and invoicing for Enterprise
 
@@ -92,10 +100,10 @@ plan, per style, per provider, and per workspace (to spot loss-making accounts).
 
 ## 8. Edge cases
 
-| Case | Handling |
-|------|----------|
-| Balance drops below hold mid-job (e.g. refund processed) | Holds are already reserved; balance can go to 0 but never negative |
-| Stripe webhook delayed after checkout | Web app polls `/billing/credits` for 60 s after redirect; shows "activating" |
-| Duplicate job submission | `Idempotency-Key` returns the original job |
-| Downgrade below current usage (e.g. 5 seats → 3) | Block downgrade in Customer Portal until seats removed |
-| Chargeback | Freeze workspace, lock downloads, open dispute with evidence (job logs, downloads) |
+| Case                                                     | Handling                                                                           |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Balance drops below hold mid-job (e.g. refund processed) | Holds are already reserved; balance can go to 0 but never negative                 |
+| Stripe webhook delayed after checkout                    | Web app polls `/billing/credits` for 60 s after redirect; shows "activating"       |
+| Duplicate job submission                                 | `Idempotency-Key` returns the original job                                         |
+| Downgrade below current usage (e.g. 5 seats → 3)         | Block downgrade in Customer Portal until seats removed                             |
+| Chargeback                                               | Freeze workspace, lock downloads, open dispute with evidence (job logs, downloads) |

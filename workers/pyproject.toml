@@ -1,0 +1,60 @@
+[project]
+name = "avg-workers"
+version = "0.1.0"
+description = "Temporal workers for the AI video pipeline: story, image, video, audio, edit, QA."
+requires-python = ">=3.11"
+dependencies = [
+  "temporalio>=1.13,<2",
+  "pydantic>=2.9,<3",
+  "httpx>=0.27,<1",
+  "pillow>=10.4",
+  "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "ruff>=0.6",
+  "mypy>=1.11",
+  "datamodel-code-generator>=0.26",
+]
+
+[project.scripts]
+avg-worker = "avg_workers.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["avg_workers"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["avg_workers/contracts/generated"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+# ASYNC109: `timeout` here is a Temporal activity option, not an asyncio timeout.
+# ASYNC240: trivial mkdir/write of tiny files inside async activities is acceptable.
+ignore = ["ASYNC109", "ASYNC240"]
+
+[tool.ruff.lint.per-file-ignores]
+"avg_workers/edit/subtitles.py" = ["E501"]  # ASS header format lines
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = ["pydantic.mypy"]
+exclude = ["avg_workers/contracts/generated"]
+
+[[tool.mypy.overrides]]
+module = "avg_workers.contracts.generated.*"
+ignore_errors = true

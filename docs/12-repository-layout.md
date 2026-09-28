@@ -57,15 +57,15 @@ ai-content-automation/
 
 ## Tooling and conventions
 
-| Area | Choice |
-|------|--------|
-| TypeScript | strict mode, ESLint + Prettier, Vitest, Zod for runtime validation |
-| Python | uv, ruff, mypy strict, pytest, Pydantic v2 |
-| Contracts | JSON Schema is canonical; `pnpm gen:contracts` regenerates Zod and Pydantic; CI fails on drift |
-| Commits | Conventional Commits; changesets for SDK versioning |
-| ADRs | `docs/adr/NNNN-title.md` for every decision in `README.md`'s decision table |
-| Feature flags | PostHog flags or Unleash; used for style presets, providers, director mode |
-| Secrets in dev | `.env.example` committed; real values via `direnv` + 1Password CLI |
+| Area           | Choice                                                                                         |
+| -------------- | ---------------------------------------------------------------------------------------------- |
+| TypeScript     | strict mode, ESLint + Prettier, Vitest, Zod for runtime validation                             |
+| Python         | uv, ruff, mypy strict, pytest, Pydantic v2                                                     |
+| Contracts      | JSON Schema is canonical; `pnpm gen:contracts` regenerates Zod and Pydantic; CI fails on drift |
+| Commits        | Conventional Commits; changesets for SDK versioning                                            |
+| ADRs           | `docs/adr/NNNN-title.md` for every decision in `README.md`'s decision table                    |
+| Feature flags  | PostHog flags or Unleash; used for style presets, providers, director mode                     |
+| Secrets in dev | `.env.example` committed; real values via `direnv` + 1Password CLI                             |
 
 ## First implementation steps (Phase 0 checklist)
 

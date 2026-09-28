@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://avg.dev/schemas/scenes.schema.json",
+  "title": "ScenePlan",
+  "description": "Stage 2 shot list with locked durations. Source of truth for stages 3-6.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "title",
+    "logline",
+    "style",
+    "characters",
+    "scenes",
+    "music",
+    "subtitleStyle"
+  ],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "title": { "type": "string" },
+    "logline": { "type": "string" },
+    "style": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preset", "negative"],
+      "properties": {
+        "preset": { "type": "string" },
+        "prefix": { "type": "string" },
+        "palette": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
+        },
+        "negative": { "type": "string" }
+      }
+    },
+    "characters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "visualDescriptor"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "visualDescriptor": { "type": "string" },
+          "voiceId": { "type": "string" },
+          "sheetKey": {
+            "type": "string",
+            "description": "Storage key prefix of the locked character sheet."
+          }
+        }
+      }
+    },
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 40,
+      "items": { "$ref": "#/$defs/Scene" }
+    },
+    "music": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mood"],
+      "properties": {
+        "mood": { "type": "string" },
+        "bpm": { "type": "integer", "minimum": 40, "maximum": 200 },
+        "instruments": { "type": "string" }
+      }
+    },
+    "subtitleStyle": { "type": "string", "enum": ["bold_center", "lower_third", "none"] },
+    "totalDurationSec": { "type": "number", "minimum": 0 }
+  },
+  "$defs": {
+    "Keyframe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["position", "prompt"],
+      "properties": {
+        "position": { "type": "string", "enum": ["start", "end"] },
+        "prompt": { "type": "string", "minLength": 1 }
+      }
+    },
+    "Motion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["camera", "subject", "intensity"],
+      "properties": {
+        "camera": {
+          "type": "string",
+          "description": "e.g. slow push-in, pan left, static, handheld"
+        },
+        "subject": { "type": "string" },
+        "intensity": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "TimedLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["speaker", "text", "startOffsetSec"],
+      "properties": {
+        "speaker": { "type": "string" },
+        "text": { "type": "string" },
+        "emotion": { "type": "string" },
+        "startOffsetSec": { "type": "number", "minimum": 0 }
+      }
+    },
+    "SfxCue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cue", "atSec"],
+      "properties": {
+        "cue": { "type": "string" },
+        "atSec": { "type": "number", "minimum": 0 },
+        "gainDb": { "type": "number", "default": -18 }
+      }
+    },
+    "Scene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "durationSec",
+        "location",
+        "characters",
+        "keyframes",
+        "motion",
+        "dialogue",
+        "sfx",
+        "music",
+        "transitionOut"
+      ],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "durationSec": { "type": "number", "minimum": 1, "maximum": 12 },
+        "location": { "type": "string" },
+        "characters": { "type": "array", "items": { "type": "string" } },
+        "keyframes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": { "$ref": "#/$defs/Keyframe" }
+        },
+        "motion": { "$ref": "#/$defs/Motion" },
+        "dialogue": { "type": "array", "items": { "$ref": "#/$defs/TimedLine" } },
+        "narration": { "$ref": "#/$defs/TimedLine" },
+        "sfx": { "type": "array", "items": { "$ref": "#/$defs/SfxCue" } },
+        "music": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cue", "energy"],
+          "properties": {
+            "cue": { "type": "string" },
+            "energy": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "transitionOut": { "type": "string", "enum": ["cut", "crossfade", "dip_to_black"] }
+      }
+    }
+  }
+}

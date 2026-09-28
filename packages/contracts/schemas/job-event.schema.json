@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://avg.dev/schemas/job-event.schema.json",
+  "title": "JobEvent",
+  "description": "Progress event emitted by the pipeline, stored in job_events and streamed over SSE / webhooks.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "payload"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "job.queued",
+        "job.started",
+        "stage.started",
+        "stage.completed",
+        "stage.failed",
+        "scene.progress",
+        "preview.ready",
+        "job.awaiting_approval",
+        "job.completed",
+        "job.failed",
+        "job.canceled"
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "stage": {
+          "type": "string",
+          "enum": [
+            "moderation",
+            "story",
+            "characters",
+            "keyframes",
+            "video",
+            "audio",
+            "edit",
+            "final"
+          ]
+        },
+        "sceneIndex": { "type": "integer", "minimum": 0 },
+        "attempt": { "type": "integer", "minimum": 1 },
+        "provider": { "type": "string" },
+        "status": { "type": "string" },
+        "kind": { "type": "string" },
+        "artifactKey": { "type": "string" },
+        "message": { "type": "string" },
+        "code": { "type": "string" },
+        "retryable": { "type": "boolean" },
+        "checkpoint": { "type": "string", "enum": ["script", "characters"] },
+        "durationSec": { "type": "number" },
+        "credits": { "type": "integer" },
+        "flags": { "type": "array", "items": { "type": "string" } },
+        "output": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

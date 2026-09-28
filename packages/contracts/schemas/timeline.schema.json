@@ -1,0 +1,234 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://avg.dev/schemas/timeline.schema.json",
+  "title": "Timeline",
+  "description": "Edit Decision List consumed by the FFmpeg renderer. All times in seconds on the output timeline.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "fps", "width", "height", "durationSec", "video", "audio", "subtitles"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "fps": {
+      "type": "integer",
+      "enum": [24, 25, 30]
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 16
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 16
+    },
+    "durationSec": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "video": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/VideoClip"
+      }
+    },
+    "audio": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AudioClip"
+      }
+    },
+    "subtitles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["style", "burnIn", "cues"],
+      "properties": {
+        "style": {
+          "type": "string",
+          "enum": ["bold_center", "lower_third", "none"]
+        },
+        "burnIn": {
+          "type": "boolean"
+        },
+        "cues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SubtitleCue"
+          }
+        }
+      }
+    },
+    "overlays": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Overlay"
+      }
+    },
+    "loudnessLufs": {
+      "type": "number",
+      "default": -14
+    }
+  },
+  "$defs": {
+    "Transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "durationSec"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["cut", "crossfade", "dip_to_black"]
+        },
+        "durationSec": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
+        }
+      }
+    },
+    "VideoClip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["src", "inSec", "outSec", "at"],
+      "properties": {
+        "src": {
+          "type": "string",
+          "description": "Storage key of a normalised clip (or a still image when kenBurns is set)."
+        },
+        "inSec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "outSec": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "at": {
+          "type": "number",
+          "minimum": 0
+        },
+        "kenBurns": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zoomFrom", "zoomTo"],
+          "properties": {
+            "zoomFrom": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 2
+            },
+            "zoomTo": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 2
+            }
+          }
+        },
+        "transitionOut": {
+          "$ref": "#/$defs/Transition"
+        },
+        "sceneIndex": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "AudioClip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["src", "at", "track"],
+      "properties": {
+        "src": {
+          "type": "string"
+        },
+        "at": {
+          "type": "number",
+          "minimum": 0
+        },
+        "gainDb": {
+          "type": "number",
+          "default": 0
+        },
+        "track": {
+          "type": "string",
+          "enum": ["voice", "sfx", "music"]
+        },
+        "duck": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["by", "depthDb"],
+          "properties": {
+            "by": {
+              "type": "string",
+              "enum": ["voice"]
+            },
+            "depthDb": {
+              "type": "number",
+              "maximum": 0
+            },
+            "attackMs": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 120
+            },
+            "releaseMs": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 400
+            }
+          }
+        },
+        "loopToSec": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Loop the source until this output time (music beds)."
+        }
+      }
+    },
+    "SubtitleCue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startSec", "endSec", "text"],
+      "properties": {
+        "startSec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "endSec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "text": {
+          "type": "string"
+        },
+        "speaker": {
+          "type": "string"
+        }
+      }
+    },
+    "Overlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "text", "at", "durationSec"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["title", "cta"]
+        },
+        "text": {
+          "type": "string"
+        },
+        "at": {
+          "type": "number",
+          "minimum": 0
+        },
+        "durationSec": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    }
+  }
+}

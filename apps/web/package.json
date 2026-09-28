@@ -1,0 +1,32 @@
+{
+  "name": "@avg/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dashboard and marketing site: create a video from a one-line story and watch it render.",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"no web unit tests yet\""
+  },
+  "dependencies": {
+    "@avg/contracts": "workspace:*",
+    "@clerk/nextjs": "^6.31.0",
+    "next": "^15.5.2",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@tailwindcss/postcss": "^4.1.12",
+    "@types/node": "^22.17.0",
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "eslint": "^9.34.0",
+    "eslint-config-next": "^15.5.2",
+    "tailwindcss": "^4.1.12",
+    "typescript": "^5.9.2"
+  }
+}
