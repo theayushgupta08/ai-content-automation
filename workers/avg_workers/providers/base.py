@@ -21,6 +21,19 @@ class ProviderInfo(BaseModel):
     model: str
 
 
+class ContentRefusedError(Exception):
+    """A provider declined to generate for safety reasons. Never retried; the job fails
+    with CONTENT_BLOCKED and the user's credits are refunded."""
+
+    def __init__(self, message: str, category: str | None = None) -> None:
+        super().__init__(message)
+        self.category = category
+
+
+class ProviderOutputError(Exception):
+    """A provider returned output that failed contract validation after retries."""
+
+
 # ---- LLM -------------------------------------------------------------------
 
 

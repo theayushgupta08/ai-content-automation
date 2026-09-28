@@ -13,8 +13,14 @@ Story idea ─► LLM Story Engine ─► Character & Image Generator ─► Vid
 Phase 0 of the [delivery roadmap](docs/11-delivery-roadmap.md) is implemented: the whole
 pipeline runs end to end on **mock providers** that synthesise real media locally, so
 orchestration, storage, editing, QA, progress streaming and the dashboard can be exercised
-without API keys or GPUs. Real model adapters plug into `workers/avg_workers/providers/`
-behind the same interfaces (Phase 1).
+without API keys or GPUs.
+
+Phase 1 is in progress. The first real adapter is the **Claude story engine**
+(`PROVIDER_MODE=live` or `PROVIDER_LLM=anthropic` with `ANTHROPIC_API_KEY`): structured
+script and shot-list generation, a critic-and-revise pass, input and script moderation, and
+per-call cost tracking. Durations and reading speed are budgeted in code so contracts always
+validate. `workers/scripts/eval_story.py` is the prompt regression harness. Image, video,
+speech, music and SFX still run on mocks until their adapters land.
 
 ## Quickstart
 

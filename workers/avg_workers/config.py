@@ -40,7 +40,30 @@ class Settings:
         default_factory=lambda: (REPO_ROOT / _env("MEDIA_ROOT", "./.local/media")).resolve()
     )
 
+    # "mock" runs every capability on local mocks; "live" defaults each capability to its
+    # first real adapter. PROVIDER_<CAP> overrides one capability (e.g. PROVIDER_LLM=anthropic).
     provider_mode: str = field(default_factory=lambda: _env("PROVIDER_MODE", "mock"))
+    provider_llm: str = field(default_factory=lambda: _env("PROVIDER_LLM", ""))
+    provider_image: str = field(default_factory=lambda: _env("PROVIDER_IMAGE", ""))
+    provider_video: str = field(default_factory=lambda: _env("PROVIDER_VIDEO", ""))
+    provider_speech: str = field(default_factory=lambda: _env("PROVIDER_SPEECH", ""))
+    provider_music: str = field(default_factory=lambda: _env("PROVIDER_MUSIC", ""))
+    provider_sfx: str = field(default_factory=lambda: _env("PROVIDER_SFX", ""))
+
+    anthropic_story_model: str = field(
+        default_factory=lambda: _env("ANTHROPIC_STORY_MODEL", "claude-opus-5")
+    )
+    anthropic_critic_model: str = field(
+        default_factory=lambda: _env("ANTHROPIC_CRITIC_MODEL", "claude-haiku-4-5")
+    )
+    anthropic_effort: str = field(default_factory=lambda: _env("ANTHROPIC_EFFORT", "medium"))
+    story_critique: bool = field(
+        default_factory=lambda: _env("STORY_CRITIQUE", "true").lower() == "true"
+    )
+    story_critique_threshold: int = field(
+        default_factory=lambda: int(_env("STORY_CRITIQUE_THRESHOLD", "7"))
+    )
+
     ffmpeg_bin: str = field(default_factory=lambda: _env("FFMPEG_BIN", "ffmpeg"))
     ffprobe_bin: str = field(default_factory=lambda: _env("FFPROBE_BIN", "ffprobe"))
 
@@ -48,6 +71,28 @@ class Settings:
     render_scale: float = field(default_factory=lambda: float(_env("RENDER_SCALE", "1.0")))
     # Max scenes rendered concurrently per job.
     scene_concurrency: int = field(default_factory=lambda: int(_env("SCENE_CONCURRENCY", "4")))
+
+    def provider_for(self, capability: str) -> str:
+        """Resolve the adapter name for a capability from the explicit override or the mode."""
+        explicit = getattr(self, f"provider_{capability}")
+        if explicit:
+            return str(explicit)
+        if self.provider_mode == "mock":
+            return "mock"
+        if self.provider_mode == "live":
+            return LIVE_DEFAULTS.get(capability, "mock")
+        raise ValueError(f"PROVIDER_MODE={self.provider_mode!r} must be 'mock' or 'live'")
+
+
+# First real adapter per capability; capabilities without one stay on mocks until built.
+LIVE_DEFAULTS: dict[str, str] = {
+    "llm": "anthropic",
+    "image": "mock",
+    "video": "mock",
+    "speech": "mock",
+    "music": "mock",
+    "sfx": "mock",
+}
 
 
 def load_settings() -> Settings:

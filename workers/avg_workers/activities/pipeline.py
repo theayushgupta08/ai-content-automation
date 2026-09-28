@@ -8,10 +8,13 @@ import hashlib
 import json
 import math
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 
 from avg_workers.activities import names
 from avg_workers.activities.models import (
@@ -62,8 +65,10 @@ from avg_workers.edit.timeline_builder import build_timeline
 from avg_workers.ffmpeg import FFmpeg
 from avg_workers.providers.base import (
     ClipRequest,
+    ContentRefusedError,
     ImageRequest,
     MusicRequest,
+    ProviderOutputError,
     ProviderSet,
     SfxRequest,
     SpeechRequest,
@@ -181,21 +186,30 @@ class PipelineActivities:
 
     @activity.defn(name=names.MODERATE_TEXT)
     async def moderate_text(self, inp: ModerateInput) -> ModerationVerdict:
-        verdict, categories = await self.providers.llm.moderate_text(inp.text)
+        try:
+            verdict, categories = await self.providers.llm.moderate_text(inp.text)
+        except ContentRefusedError as e:
+            # The classifier itself refusing is the strongest possible signal.
+            return ModerationVerdict(verdict="block", categories=[e.category or "refused"])
         return ModerationVerdict(verdict=verdict, categories=categories)
 
     @activity.defn(name=names.WRITE_SCRIPT)
     async def write_script(self, inp: WriteScriptInput) -> WriteScriptResult:
-        script = await self.providers.llm.write_script(inp.input, inp.seed)
+        with _provider_errors("story"):
+            script = await self.providers.llm.write_script(inp.input, inp.seed)
         Script.model_validate(script.model_dump())
         key = f"{inp.ctx.prefix}/script/v1.json"
         self._write_json(key, script)
-        await self._artifact(inp.ctx, "script", key, provider=self.providers.llm.info.name)
+        meta = script.meta.model_dump(mode="json", exclude_none=True) if script.meta else {}
+        await self._artifact(
+            inp.ctx, "script", key, **{"provider": self.providers.llm.info.name, **meta}
+        )
         return WriteScriptResult(script=script, key=key)
 
     @activity.defn(name=names.BREAKDOWN_SCENES)
     async def breakdown_scenes(self, inp: BreakdownInput) -> BreakdownResult:
-        plan = await self.providers.llm.breakdown_scenes(inp.input, inp.script, inp.seed)
+        with _provider_errors("story"):
+            plan = await self.providers.llm.breakdown_scenes(inp.input, inp.script, inp.seed)
         ScenePlan.model_validate(plan.model_dump())
         _validate_plan(plan, inp.input.options.targetDurationSec)
         key = f"{inp.ctx.prefix}/scenes/v1.json"
@@ -534,6 +548,17 @@ class PipelineActivities:
             reasons=reasons,
             scores={"durationSec": probe.duration_sec, "blackSec": black},
         )
+
+
+@contextmanager
+def _provider_errors(stage: str) -> Iterator[None]:
+    """Map provider exceptions to Temporal application errors with stable codes."""
+    try:
+        yield
+    except ContentRefusedError as e:
+        raise ApplicationError(str(e), type="CONTENT_BLOCKED", non_retryable=True) from e
+    except ProviderOutputError as e:
+        raise ApplicationError(str(e), type=f"{stage.upper()}_FAILED") from e
 
 
 def _validate_plan(plan: ScenePlan, target_sec: int) -> None:
