@@ -22,6 +22,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               </Link>
               <nav className="flex items-center gap-4 text-sm" style={{ color: 'var(--muted)' }}>
                 <Link href="/jobs">My videos</Link>
+                <Link href="/billing">Plan & credits</Link>
                 <Link href="/new" className="btn" style={{ padding: '0.4rem 0.8rem' }}>
                   New video
                 </Link>

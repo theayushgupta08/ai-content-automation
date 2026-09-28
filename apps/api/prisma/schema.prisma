@@ -34,8 +34,12 @@ model Workspace {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  members WorkspaceMember[]
-  jobs    VideoJob[]
+  members       WorkspaceMember[]
+  jobs          VideoJob[]
+  subscriptions Subscription[]
+  ledger        CreditLedger[]
+  holds         CreditHold[]
+  balance       CreditBalance?
 
   @@map("workspaces")
 }
@@ -175,4 +179,129 @@ model JobEvent {
 
   @@unique([jobId, seq])
   @@map("job_events")
+}
+
+// ---- Billing ------------------------------------------------------------------------
+
+model Plan {
+  id               String  @id
+  name             String
+  stripePriceMonth String? @map("stripe_price_month")
+  stripePriceYear  String? @map("stripe_price_year")
+  creditsPerPeriod Int     @map("credits_per_period")
+  maxDurationSec   Int     @map("max_duration_sec")
+  maxConcurrency   Int     @map("max_concurrency")
+  maxResolution    String  @map("max_resolution")
+  /// {premiumVideo, directorMode, api, voiceClone, seats, watermark, priorityQueue}
+  features         Json
+  rolloverMonths   Int     @default(0) @map("rollover_months")
+  priceUsdMonth    Int     @default(0) @map("price_usd_month")
+  active           Boolean @default(true)
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  canceled
+  unpaid
+  paused
+}
+
+model Subscription {
+  id                   String             @id @default(uuid()) @db.Uuid
+  workspaceId          String             @map("workspace_id") @db.Uuid
+  planId               String             @map("plan_id")
+  stripeCustomerId     String             @map("stripe_customer_id")
+  stripeSubscriptionId String?            @unique @map("stripe_subscription_id")
+  status               SubscriptionStatus
+  currentPeriodStart   DateTime           @map("current_period_start")
+  currentPeriodEnd     DateTime           @map("current_period_end")
+  cancelAtPeriodEnd    Boolean            @default(false) @map("cancel_at_period_end")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  plan      Plan      @relation(fields: [planId], references: [id])
+
+  @@index([workspaceId, status])
+  @@map("subscriptions")
+}
+
+enum LedgerReason {
+  trial_grant
+  subscription_grant
+  rollover
+  pack_purchase
+  job_hold
+  job_settle
+  job_refund
+  regen_charge
+  manual_adjustment
+  expiry
+  promo
+}
+
+/// Append-only. Balance = sum(amount). Rows are never updated or deleted.
+model CreditLedger {
+  id             BigInt       @id @default(autoincrement())
+  workspaceId    String       @map("workspace_id") @db.Uuid
+  amount         Int
+  reason         LedgerReason
+  jobId          String?      @map("job_id") @db.Uuid
+  holdId         String?      @map("hold_id") @db.Uuid
+  expiresAt      DateTime?    @map("expires_at")
+  metadata       Json         @default("{}")
+  idempotencyKey String?      @unique @map("idempotency_key")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@map("credit_ledger")
+}
+
+enum HoldStatus {
+  active
+  settled
+  released
+}
+
+model CreditHold {
+  id          String     @id @default(uuid()) @db.Uuid
+  workspaceId String     @map("workspace_id") @db.Uuid
+  jobId       String     @unique @map("job_id") @db.Uuid
+  estimated   Int
+  spent       Int        @default(0)
+  status      HoldStatus @default(active)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@map("credit_holds")
+}
+
+/// Materialised balance, updated inside the same transaction as every ledger row.
+model CreditBalance {
+  workspaceId String   @id @map("workspace_id") @db.Uuid
+  available   Int      @default(0)
+  held        Int      @default(0)
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@map("credit_balances")
+}
+
+model StripeEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@map("stripe_events")
 }

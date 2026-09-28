@@ -29,6 +29,13 @@ generated music, with a curated royalty-free library as the music fallback
 artifacts. Set `PROVIDER_MODE=live` with `ANTHROPIC_API_KEY`, `FAL_KEY` and
 `ELEVENLABS_API_KEY`; any capability can be pinned back to `mock` with `PROVIDER_<CAP>`.
 
+Billing is in: an append-only **credit ledger** with locked balances (hold at job creation,
+settle on completion, refund on failure), plan **entitlements** enforced at job creation
+(length, premium tier, director mode, concurrency), **Stripe** Checkout, Customer Portal and
+webhooks for subscriptions and credit packs, trial credits for every new workspace, and a
+plan & credits page in the dashboard. Without `STRIPE_SECRET_KEY` the ledger and trial still
+work and checkout is disabled.
+
 ## Quickstart
 
 Prerequisites: Node 22 + pnpm 10, Python 3.11+ + [uv](https://docs.astral.sh/uv/), ffmpeg,

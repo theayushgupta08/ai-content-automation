@@ -88,8 +88,12 @@ BODY=$(cat <<JSON
 JSON
 )
 log "cost preview: $(curl -sf -X POST "$API_URL/v1/jobs/estimate" -H 'content-type: application/json' -d "$BODY")"
-JOB=$(curl -sf -X POST "$API_URL/v1/jobs" -H 'content-type: application/json' -d "$BODY")
-JOB_ID=$(printf '%s' "$JOB" | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+JOB=$(curl -s -X POST "$API_URL/v1/jobs" -H 'content-type: application/json' -d "$BODY")
+JOB_ID=$(printf '%s' "$JOB" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("id",""))')
+if [ -z "$JOB_ID" ]; then
+  echo "job creation failed: $JOB" >&2
+  exit 1
+fi
 log "created job $JOB_ID"
 
 # ---- follow progress ---------------------------------------------------------

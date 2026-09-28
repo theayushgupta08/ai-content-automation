@@ -43,6 +43,11 @@ export const appConfig = {
     signingSecret: env('MEDIA_SIGNING_SECRET', env('INTERNAL_API_TOKEN', 'dev-internal-token')),
     urlTtlSec: Number(env('MEDIA_URL_TTL_SEC', String(24 * 3600))),
   },
+  webUrl: env('WEB_URL', 'http://localhost:3000'),
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY ?? '',
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
+  },
   pipelineVersion: env('PIPELINE_VERSION', 'v0'),
   corsOrigins: env('CORS_ORIGINS', 'http://localhost:3000')
     .split(',')

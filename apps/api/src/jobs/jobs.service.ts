@@ -1,6 +1,9 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { JobStatus, Prisma, VideoJob } from '@prisma/client';
 import { assertJobInput, type JobInput } from '@avg/contracts';
+import { BillingService } from '../billing/billing.service';
+import { CreditsService } from '../billing/credits.service';
+import { assertJobAllowed } from '../billing/entitlements';
 import { ApiError } from '../common/problem.filter';
 import type { Principal } from '../common/auth';
 import { appConfig } from '../config';
@@ -47,6 +50,8 @@ export class JobsService {
     private readonly temporal: TemporalService,
     private readonly jobEvents: JobEventsService,
     private readonly media: MediaService,
+    private readonly billing: BillingService,
+    private readonly credits: CreditsService,
   ) {}
 
   estimate(body: unknown) {
@@ -57,6 +62,15 @@ export class JobsService {
     const input = assertJobInput(body);
     const estimate = estimateJob(input);
 
+    await this.reconcileStale(principal.workspaceId);
+    const [entitlements, activeJobs] = await Promise.all([
+      this.billing.entitlements(principal.workspaceId),
+      this.prisma.videoJob.count({
+        where: { workspaceId: principal.workspaceId, status: { in: ACTIVE } },
+      }),
+    ]);
+    assertJobAllowed(entitlements, input, activeJobs);
+
     const job = await this.prisma.videoJob.create({
       data: {
         workspaceId: principal.workspaceId,
@@ -66,6 +80,16 @@ export class JobsService {
         pipelineVersion: appConfig.pipelineVersion,
         estimatedCredits: estimate.credits,
       },
+    });
+    try {
+      await this.credits.hold(principal.workspaceId, job.id, estimate.credits);
+    } catch (e) {
+      await this.prisma.videoJob.delete({ where: { id: job.id } });
+      throw e;
+    }
+    await this.prisma.videoJob.update({
+      where: { id: job.id },
+      data: { creditsHeld: estimate.credits },
     });
     await this.jobEvents.append(job.id, 'job.queued', { credits: estimate.credits });
 
@@ -82,6 +106,7 @@ export class JobsService {
       });
     } catch (e) {
       this.logger.error(`failed to start workflow for job ${job.id}: ${(e as Error).message}`);
+      await this.credits.release(job.id, true);
       await this.prisma.videoJob.update({
         where: { id: job.id },
         data: {
@@ -104,6 +129,51 @@ export class JobsService {
       );
     }
     return this.get(principal, job.id);
+  }
+
+  /**
+   * Jobs that look active but whose workflow is gone (orchestrator wiped, history purged) or
+   * already closed without reporting back are failed and refunded, so they stop counting
+   * against concurrency and never sit "running" forever.
+   */
+  async reconcileStale(workspaceId: string): Promise<number> {
+    const cutoff = new Date(Date.now() - 60_000);
+    const candidates = await this.prisma.videoJob.findMany({
+      where: { workspaceId, status: { in: ACTIVE }, updatedAt: { lt: cutoff } },
+      select: { id: true, output: true },
+    });
+    let fixed = 0;
+    for (const job of candidates) {
+      let status: string | null;
+      try {
+        status = await this.temporal.workflowStatus(job.id);
+      } catch (e) {
+        this.logger.warn(
+          `reconcile: cannot describe workflow for ${job.id}: ${(e as Error).message}`,
+        );
+        continue;
+      }
+      if (status === 'RUNNING') continue;
+      const code = status === null ? 'ORCHESTRATOR_LOST' : `WORKFLOW_${status}`;
+      await this.credits.release(job.id, !job.output);
+      await this.prisma.videoJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'failed',
+          creditsHeld: 0,
+          completedAt: new Date(),
+          error: {
+            code,
+            message: 'The pipeline stopped without reporting a result',
+            retryable: true,
+          },
+        },
+      });
+      await this.jobEvents.appendTerminal(job.id, 'failed', { code, retryable: true });
+      fixed++;
+    }
+    if (fixed) this.logger.warn(`reconciled ${fixed} stale job(s) in workspace ${workspaceId}`);
+    return fixed;
   }
 
   async list(
@@ -144,6 +214,7 @@ export class JobsService {
     }
     const found = await this.temporal.cancel(id);
     if (!found) {
+      await this.credits.release(id, true);
       await this.prisma.videoJob.update({
         where: { id },
         data: { status: 'canceled', completedAt: new Date() },

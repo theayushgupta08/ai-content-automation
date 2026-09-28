@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BillingModule } from './billing/billing.module';
 import { HealthController } from './health/health.controller';
 import { InternalModule } from './internal/internal.module';
 import { JobsModule } from './jobs/jobs.module';
@@ -8,7 +9,15 @@ import { RedisModule } from './redis/redis.module';
 import { TemporalModule } from './temporal/temporal.module';
 
 @Module({
-  imports: [PrismaModule, RedisModule, TemporalModule, MediaModule, JobsModule, InternalModule],
+  imports: [
+    PrismaModule,
+    RedisModule,
+    TemporalModule,
+    MediaModule,
+    BillingModule,
+    JobsModule,
+    InternalModule,
+  ],
   controllers: [HealthController],
 })
 export class AppModule {}

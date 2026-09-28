@@ -41,6 +41,40 @@ export interface Estimate {
   estimatedSeconds: number;
 }
 
+export interface PlanView {
+  id: string;
+  name: string;
+  priceUsdMonth: number;
+  creditsPerPeriod: number;
+  maxDurationSec: number;
+  maxConcurrency: number;
+  maxResolution: string;
+  rolloverMonths: number;
+  features: {
+    premiumVideo: boolean;
+    directorMode: boolean;
+    api: boolean;
+    voiceClone: boolean;
+    seats: number;
+    watermark: boolean;
+    priorityQueue: boolean;
+  };
+  available: boolean;
+}
+
+export interface BillingSummary {
+  plan: { id: string; name: string };
+  entitlements: {
+    maxDurationSec: number;
+    maxConcurrency: number;
+    premiumVideo: boolean;
+    directorMode: boolean;
+  };
+  credits: { available: number; held: number };
+  subscription: { status: string; currentPeriodEnd: string; cancelAtPeriodEnd: boolean } | null;
+  billingEnabled: boolean;
+}
+
 export interface JobEventMessage {
   jobId: string;
   seq: number;
@@ -105,6 +139,18 @@ export const api = {
       headers,
     }),
   eventsUrl: (id: string) => `${API_URL}/v1/jobs/${id}/events`,
+  plans: () => request<{ data: PlanView[] }>('/v1/plans'),
+  billing: (headers: Headers) => request<BillingSummary>('/v1/billing', { headers }),
+  checkout: (planId: string, interval: 'month' | 'year', headers: Headers) =>
+    request<{ url: string }>('/v1/billing/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ planId, interval }),
+      headers,
+    }),
+  checkoutPack: (headers: Headers) =>
+    request<{ url: string }>('/v1/billing/credit-packs/checkout', { method: 'POST', headers }),
+  portal: (headers: Headers) =>
+    request<{ url: string }>('/v1/billing/portal', { method: 'POST', headers }),
 };
 
 export const STAGES = [

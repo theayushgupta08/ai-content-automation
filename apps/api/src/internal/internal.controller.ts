@@ -13,6 +13,7 @@ import {
 import { ApiExcludeController } from '@nestjs/swagger';
 import { JobStage, JobStatus, Prisma, SceneStatus } from '@prisma/client';
 import { assertJobEvent } from '@avg/contracts';
+import { CreditsService } from '../billing/credits.service';
 import { InternalGuard } from '../common/auth';
 import { ApiError } from '../common/problem.filter';
 import { JobEventsService, TERMINAL_EVENT_TYPES } from '../jobs/job-events.service';
@@ -46,6 +47,7 @@ export class InternalController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: JobEventsService,
+    private readonly credits: CreditsService,
   ) {}
 
   @Post('events')
@@ -89,15 +91,25 @@ export class InternalController {
     if (body.credits) {
       switch (body.credits.action) {
         case 'hold':
+          // The API already holds at creation; the workflow's hold is an idempotent ack.
+          await this.credits.hold(job.workspaceId, id, body.credits.credits);
           data.creditsHeld = body.credits.credits;
           break;
-        case 'settle':
+        case 'settle': {
+          await this.credits.spend(id, body.credits.credits);
+          const settled = await this.credits.settle(id, body.credits.credits);
           data.creditsHeld = 0;
-          data.actualCredits = body.credits.credits;
+          data.actualCredits = settled?.charged ?? body.credits.credits;
           break;
-        case 'release':
+        }
+        case 'release': {
+          // No deliverable -> full refund; a delivered-but-canceled job keeps what it spent.
+          const delivered = Boolean(job.output) || Boolean(body.output);
+          const released = await this.credits.release(id, !delivered);
           data.creditsHeld = 0;
+          if (released && !delivered) data.actualCredits = 0;
           break;
+        }
       }
     }
     await this.prisma.videoJob.update({ where: { id }, data });

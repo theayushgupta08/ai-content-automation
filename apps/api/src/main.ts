@@ -8,7 +8,10 @@ import { AppModule } from './app.module';
 import { ProblemDetailsFilter } from './common/problem.filter';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
   app.useGlobalFilters(new ProblemDetailsFilter());
   app.enableCors({
     origin: appConfig.corsOrigins,

@@ -62,6 +62,30 @@ export class TemporalService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** Whether the job's workflow still exists (running or closed) on the Temporal server. */
+  async exists(jobId: string): Promise<boolean> {
+    try {
+      await this.getClient().workflow.getHandle(TemporalService.workflowId(jobId)).describe();
+      return true;
+    } catch (e) {
+      if (e instanceof WorkflowNotFoundError) return false;
+      throw e;
+    }
+  }
+
+  /** Running / closed status of the workflow, or null when it does not exist. */
+  async workflowStatus(jobId: string): Promise<string | null> {
+    try {
+      const d = await this.getClient()
+        .workflow.getHandle(TemporalService.workflowId(jobId))
+        .describe();
+      return d.status.name;
+    } catch (e) {
+      if (e instanceof WorkflowNotFoundError) return null;
+      throw e;
+    }
+  }
+
   async queryStatus(jobId: string): Promise<Record<string, unknown> | null> {
     try {
       return await this.getClient()

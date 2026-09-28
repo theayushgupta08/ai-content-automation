@@ -97,6 +97,8 @@ jobs:
       - run: cd workers && uv sync --all-extras
       - run: pnpm --filter @avg/api prisma:generate
       - run: pnpm --filter @avg/contracts build && pnpm --filter @avg/api build
+      - name: Ledger tests against Postgres
+        run: pnpm --filter @avg/api prisma:migrate && TEST_DATABASE_URL=$DATABASE_URL pnpm --filter @avg/api test
       - name: Run demo
         run: RENDER_SCALE=0.5 DEMO_DURATION=15 bash scripts/demo.sh
       - uses: actions/upload-artifact@v4

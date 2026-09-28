@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { appConfig } from '../config';
+import { BillingService } from '../billing/billing.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiError } from './problem.filter';
 
@@ -33,7 +34,10 @@ declare module 'express' {
 export class AuthGuard implements CanActivate {
   private readonly logger = new Logger(AuthGuard.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly billing: BillingService,
+  ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest<Request>();
@@ -49,6 +53,7 @@ export class AuthGuard implements CanActivate {
     const userId = appConfig.auth.devUserId;
     const workspaceId = (req.headers['x-workspace-id'] as string) || appConfig.auth.devWorkspaceId;
     await this.prisma.ensureDevWorkspace(userId, workspaceId);
+    await this.billing.grantTrial(workspaceId);
     return { userId, workspaceId, via: 'dev' };
   }
 
@@ -69,6 +74,7 @@ export class AuthGuard implements CanActivate {
       throw new ApiError(HttpStatus.UNAUTHORIZED, 'UNAUTHORIZED', 'Invalid token');
     }
     const { user, workspace } = await this.prisma.ensureUserWorkspace(claims.sub, claims.email);
+    await this.billing.grantTrial(workspace.id);
     const requested = req.headers['x-workspace-id'] as string | undefined;
     if (requested && requested !== workspace.id) {
       const member = await this.prisma.workspaceMember.findUnique({
